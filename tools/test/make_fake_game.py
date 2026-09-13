@@ -42,6 +42,12 @@ def main(root, version='1.0'):
     open(os.path.join(root, 'data', 'carcols.dat'), 'w').write(
         "col\n0,0,0\ncar\nadmiral, 1,1, 2,2\ninfernus, 0,0, 1,1\ncheetah, 3,3\nend\n")
     open(os.path.join(root, 'data', 'maps', 'club', 'CLUB.ipl'), 'w').write("original club ipl\n")
+    open(os.path.join(root, 'data', 'default.ide'), 'w').write(
+        "# fake\nobjs\nend\ncars\n"
+        "130, landstal, landstal, car, LANDSTAL, LANDSTK, richfamily, 10, 7, 0, 164, 0.9\n"
+        "141, infernus, infernus, car, INFERNUS, INFERNU, executive, 6, 7, 0, 178, 0.75\n"
+        "145, cheetah, cheetah, car, CHEETAH, CHEETAH, executive, 6, 7, 0, 178, 0.75\n"
+        "end\n")
     print("fake game written to", root)
 
 if __name__ == '__main__':

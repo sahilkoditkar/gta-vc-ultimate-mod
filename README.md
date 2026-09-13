@@ -222,30 +222,34 @@ mouse/keyboard, five layouts including the GTA IV one.
 
 ---
 
-## 7. Cars
+## 7. Cars — replacing every car so the whole city looks modern
 
-Full instructions and safe sources in **`cars/README.md`**. Short version:
+Vice City has 64 car slots and cannot delete any of them, so "modern
+everywhere" means replacing all 64. **`cars/README.md`** has the full slot
+table with a modern real-car suggestion for each, the search links, a
+priority order, and the safety rules. Short version:
 
 ```
 cars\
-  my_lambo\
-    infernus.dff       <- must be named after the VC car it replaces
-    infernus.txd
-    handling.txt       <- optional line(s) for handling.cfg
-    carcols.txt        <- optional line(s) for carcols.dat
+  infernus\                      <- folder named after the slot it replaces
+    Lamborghini_Aventador.dff    <- file names inside don't matter
+    Lamborghini_Aventador.txd
+    readme handling.txt          <- optional handling / carcols lines from the mod
+  cheetah.zip                    <- a zip named after the slot works too
 ```
 
-The installer replaces the entries of the same name inside `models\gta3.img`
-(rewriting `gta3.dir`; files that don't fit in the old slot are appended at the
-end, exactly what IMG Tool does), then swaps the matching lines in the data
-files. `.dff`/`.txd` are pure model/texture data and cannot contain code; any
-`.exe`/`.bat` inside a mod is ignored and reported.
+The installer writes the model into `models\gta3.img` under the slot's name
+(rewriting `gta3.dir`; files that don't fit the old slot are appended at the
+end, exactly what IMG Tool does), then swaps the matching lines in
+`handling.cfg` / `carcols.dat`, rewriting the vehicle name on those lines to
+the slot's IDs from your own `data\default.ide`. `.dff`/`.txd` are pure
+model/texture data and cannot contain code; any `.exe`/`.bat` inside a mod is
+ignored and reported.
 
-Spawning them: they replace normal traffic cars, so drive around Ocean Beach /
-Starfish Island, or use the vehicle cheats that spawn the replaced model
-(e.g. **PANZER** = tank, **THELASTRIDE** = Romero, **GETTHEREFAST** = Sabre
-Turbo, **GETTHEREVERYFASTINDEED** = Hotring Racer). Infernus/Cheetah/Banshee
-spawn naturally around the rich districts.
+Spawning them: they replace normal traffic cars, so just drive around; the
+vehicle cheats that spawn the replaced model still work (**PANZER** = tank,
+**THELASTRIDE** = Romero, **GETTHEREFAST** = Sabre Turbo,
+**GETTHEREVERYFASTINDEED** = Hotring Racer).
 
 ---
 

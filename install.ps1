@@ -279,9 +279,9 @@ function Write-ImgDir([string]$dirPath, $entries) {
     [System.IO.File]::WriteAllBytes($dirPath, $out)
 }
 
-function Set-ImgFile([string]$imgPath, [string]$dirPath, $entries, [string]$srcFile) {
-    # Replace an existing entry (same name) with the contents of $srcFile.
-    $name = [System.IO.Path]::GetFileName($srcFile)
+function Set-ImgFile([string]$imgPath, [string]$dirPath, $entries, [string]$srcFile, [string]$name) {
+    # Replace the existing entry called $name with the contents of $srcFile.
+    if (-not $name) { $name = [System.IO.Path]::GetFileName($srcFile) }
     $entry = $entries | Where-Object { $_.Name -ieq $name } | Select-Object -First 1
     if (-not $entry) { return $false }
     $data = [System.IO.File]::ReadAllBytes($srcFile)
@@ -306,6 +306,35 @@ function Set-ImgFile([string]$imgPath, [string]$dirPath, $entries, [string]$srcF
     } finally { $fs.Close() }
     Write-ImgDir $dirPath $entries
     return $true
+}
+
+function Read-VehicleSlots([string]$idePath) {
+    # data\default.ide 'cars' section:  id, model, txd, type, handlingId, gxtName, class, ...
+    $slots = @{}
+    if (-not (Test-Path -LiteralPath $idePath)) { return $slots }
+    $in = $false
+    foreach ($raw in [System.IO.File]::ReadAllLines($idePath)) {
+        $l = $raw.Trim()
+        if (-not $l -or $l.StartsWith('#')) { continue }
+        if ($l -ieq 'cars') { $in = $true; continue }
+        if ($l -ieq 'end') { $in = $false; continue }
+        if (-not $in) { continue }
+        $t = $l.Split(',') | ForEach-Object { $_.Trim() }
+        if ($t.Count -ge 5) { $slots[$t[1].ToLowerInvariant()] = @{ Model = $t[1]; Txd = $t[2]; Type = $t[3]; Handling = $t[4] } }
+    }
+    return $slots
+}
+
+function Set-FirstToken([string]$line, [string]$token, [string]$kind) {
+    # Rewrites the vehicle-name token of a handling.cfg / carcols.dat line.
+    $line = $line.Trim()
+    if ($kind -eq 'carcols') {
+        $i = $line.IndexOf(','); if ($i -lt 0) { return $line }
+        return $token + $line.Substring($i)
+    }
+    $m = [regex]::Match($line, '^([%!$]\s+)?(\S+)(.*)$')
+    if (-not $m.Success) { return $line }
+    return $m.Groups[1].Value + $token + $m.Groups[3].Value
 }
 
 function Update-DataLine([string]$dataFile, [string]$newLine, [string]$kind) {
@@ -546,26 +575,51 @@ else {
         Backup-File $img | Out-Null
         Backup-File $dir | Out-Null
         $entries = Read-ImgDir $dir
+        $slots = Read-VehicleSlots (Join-Path $Game 'data\default.ide')
+        if ($slots.Count -eq 0) { Write-Warn2 "data\default.ide not readable - slot folders disabled, files must be named after the car they replace" }
         $installed = 0; $skipped = 0
         foreach ($src in $sources) {
             $folder = $src.FullName; $tmp = $null
             if ($src.PSIsContainer -eq $false) { $tmp = Expand-ToTemp $src.FullName; $folder = $tmp }
-            Write-Info "-- $($src.Name)"
+            # folder/zip named after a game vehicle ("infernus", "cheetah", ...) = slot mode:
+            # whatever the files inside are called, they replace that vehicle.
+            $slotKey = ($src.BaseName -replace '[^A-Za-z0-9]', '').ToLowerInvariant()
+            $slot = $null
+            if ($slots.ContainsKey($slotKey)) { $slot = $slots[$slotKey] }
+            if ($slot) { Write-Info "-- $($src.Name)  (replaces vehicle '$($slot.Model)')" } else { Write-Info "-- $($src.Name)" }
             $models = Get-ChildItem -LiteralPath $folder -Recurse -File | Where-Object { $_.Extension -in '.dff', '.txd' }
             foreach ($m in $models) {
-                if (Set-ImgFile $img $dir $entries $m.FullName) { Write-Ok "gta3.img: replaced $($m.Name)"; $installed++ }
-                else { Write-Warn2 "gta3.img has no entry named '$($m.Name)' - skipped (rename it after the car it replaces)"; $skipped++ }
+                $target = $m.Name
+                if ($slot) {
+                    $sameExt = @($models | Where-Object { $_.Extension -ieq $m.Extension })
+                    if ($sameExt.Count -eq 1) { $target = $slot.Model + $m.Extension.ToLowerInvariant() }
+                }
+                if (Set-ImgFile $img $dir $entries $m.FullName $target) {
+                    if ($target -ine $m.Name) { Write-Ok "gta3.img: replaced $target  (from $($m.Name))" } else { Write-Ok "gta3.img: replaced $target" }
+                    $installed++
+                } else { Write-Warn2 "gta3.img has no entry named '$target' - skipped (put the files in a folder named after the car they replace)"; $skipped++ }
             }
-            foreach ($t in (Get-ChildItem -LiteralPath $folder -Recurse -File -Filter 'handling*.txt')) {
+            foreach ($t in (Get-ChildItem -LiteralPath $folder -Recurse -File -Filter '*handling*.txt')) {
                 foreach ($line in [System.IO.File]::ReadAllLines($t.FullName)) {
-                    if (Update-DataLine $handling $line 'handling') { Write-Ok "handling.cfg: updated '$(($line.Trim() -split '\s+')[0])'" }
+                    $l = $line.Trim(); if (-not $l -or $l.StartsWith(';') -or $l.StartsWith('#')) { continue }
+                    if ($slot) {
+                        if ($slot.Type -ieq 'car') { $l = $l -replace '^[%!$]\s+', '' }   # car lines carry no boat/bike/plane prefix
+                        $l = Set-FirstToken $l $slot.Handling 'handling'
+                    }
+                    if (Update-DataLine $handling $l 'handling') { Write-Ok "handling.cfg: updated '$(($l -split '\s+')[0])'" }
+                    else { Write-Warn2 "handling.cfg: no line for '$(($l -split '\s+')[0])' - ignored" }
                 }
             }
-            foreach ($t in (Get-ChildItem -LiteralPath $folder -Recurse -File -Filter 'carcols*.txt')) {
+            foreach ($t in (Get-ChildItem -LiteralPath $folder -Recurse -File -Filter '*carcol*.txt')) {
                 foreach ($line in [System.IO.File]::ReadAllLines($t.FullName)) {
-                    if (Update-DataLine $carcols $line 'carcols') { Write-Ok "carcols.dat: updated '$(($line.Trim().Split(','))[0])'" }
+                    $l = $line.Trim(); if (-not $l -or $l.StartsWith(';') -or $l.StartsWith('#')) { continue }
+                    if ($slot) { $l = Set-FirstToken $l $slot.Model 'carcols' }
+                    if (Update-DataLine $carcols $l 'carcols') { Write-Ok "carcols.dat: updated '$(($l.Split(','))[0])'" }
+                    else { Write-Warn2 "carcols.dat: no line for '$(($l.Split(','))[0])' - ignored" }
                 }
             }
+            $cols = Get-ChildItem -LiteralPath $folder -Recurse -File -Filter '*.col'
+            if ($cols) { Write-Warn2 "ignored .col file(s) (VC vehicles carry collision inside the .dff): $(($cols | ForEach-Object { $_.Name }) -join ', ')" }
             $exes = Get-ChildItem -LiteralPath $folder -Recurse -File | Where-Object { $_.Extension -in '.exe', '.bat', '.cmd', '.msi', '.scr', '.vbs', '.ps1' }
             if ($exes) { Write-Warn2 "ignored executable(s) inside the mod: $(($exes | ForEach-Object { $_.Name }) -join ', ')" }
             if ($tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
