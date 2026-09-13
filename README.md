@@ -43,8 +43,10 @@ To remove a cheat later, delete its `.cs` file from the game's `CLEO\` folder.
 
 ## Cars
 
-`cars\` holds the replacements, one zip or folder per car, **named after the
-slot it replaces** (`infernus.zip`, `cheetah\`, ...). The installer takes the
+`cars\` holds the replacements, one archive or folder per car, **named after
+the slot it replaces** (`infernus.rar`, `cheetah.zip`, `banshee\`, ...).
+`.zip`, `.rar` and `.7z` all work; for `.rar`/`.7z` the installer uses 7-Zip
+and installs it through winget if it isn't there. The installer takes the
 `.dff`/`.txd` inside whatever they are called, writes them over the old car in
 `gta3.img`, applies any handling / carcols lines the mod ships, then compacts
 `gta3.img` so the old car is really gone. The full slot list, modern-car

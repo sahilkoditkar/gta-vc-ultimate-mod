@@ -123,9 +123,42 @@ function Get-Package([hashtable]$pkg) {
     }
 }
 
-function Expand-ToTemp([string]$zip) {
-    $dest = Join-Path ([System.IO.Path]::GetTempPath()) ("vcmod_" + [System.IO.Path]::GetFileNameWithoutExtension($zip) + "_" + [guid]::NewGuid().ToString('N').Substring(0, 8))
-    Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force
+function Find-7Zip {
+    # 7-Zip is needed for .rar / .7z car archives (libertycity ships .rar). Returns the exe path or $null.
+    $cands = @()
+    if ($env:ProgramFiles) { $cands += (Join-Path $env:ProgramFiles '7-Zip\7z.exe') }
+    if (${env:ProgramFiles(x86)}) { $cands += (Join-Path ${env:ProgramFiles(x86)} '7-Zip\7z.exe') }
+    if ($env:LOCALAPPDATA) { $cands += (Join-Path $env:LOCALAPPDATA 'Programs\7-Zip\7z.exe') }
+    foreach ($c in $cands) { if (Test-Path -LiteralPath $c) { return $c } }
+    foreach ($n in '7z', '7za', '7zz', '7zr') {
+        $cmd = Get-Command $n -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+    }
+    return $null
+}
+
+function Install-7Zip {
+    # Try to get 7-Zip via winget (built into Windows 10/11). Returns the exe path or $null.
+    if (-not $IsWin) { return $null }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $null }
+    Write-Info "7-Zip not found - installing it with winget (needed to open .rar car archives)..."
+    try {
+        & winget install --id 7zip.7zip -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
+    } catch {}
+    return (Find-7Zip)
+}
+
+function Expand-ToTemp([string]$archive) {
+    $dest = Join-Path ([System.IO.Path]::GetTempPath()) ("vcmod_" + [System.IO.Path]::GetFileNameWithoutExtension($archive) + "_" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $ext = [System.IO.Path]::GetExtension($archive).ToLowerInvariant()
+    if ($ext -eq '.zip') {
+        try { Expand-Archive -LiteralPath $archive -DestinationPath $dest -Force; return $dest } catch { }
+    }
+    $sz = $script:SevenZip
+    if (-not $sz) { throw "cannot open '$([System.IO.Path]::GetFileName($archive))' - 7-Zip is not installed (get it from https://www.7-zip.org or run: winget install 7zip.7zip)" }
+    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    & $sz x "-o$dest" -y -bso0 -bsp0 -- "$archive" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "7-Zip failed to extract '$([System.IO.Path]::GetFileName($archive))' (exit code $LASTEXITCODE)" }
     return $dest
 }
 
@@ -491,6 +524,7 @@ if (-not $Yes) {
     if ($ans -and $ans.Trim().ToLower().StartsWith('n')) { Write-Host "Aborted."; exit 1 }
 }
 
+$script:SevenZip = Find-7Zip
 $script:BackupRoot = Join-Path (Join-Path $Game '_ultimate_mod_backup') (Get-Date -Format 'yyyyMMdd_HHmmss')
 New-Item -ItemType Directory -Path $script:BackupRoot -Force | Out-Null
 $Summary = New-Object System.Collections.ArrayList
@@ -594,7 +628,12 @@ else {
     $sources = @()
     if (Test-Path -LiteralPath $carsRoot) {
         $sources += Get-ChildItem -LiteralPath $carsRoot -Directory
-        $sources += Get-ChildItem -LiteralPath $carsRoot -File -Filter '*.zip'
+        $sources += Get-ChildItem -LiteralPath $carsRoot -File | Where-Object { $_.Extension -in '.zip', '.rar', '.7z' }
+    }
+    if (($sources | Where-Object { -not $_.PSIsContainer -and $_.Extension -in '.rar', '.7z' }) -and -not $script:SevenZip) {
+        $script:SevenZip = Install-7Zip
+        if ($script:SevenZip) { Write-Ok "7-Zip: $script:SevenZip" }
+        else { Write-Warn2 ".rar/.7z car archives present but 7-Zip is not installed - install it from https://www.7-zip.org (or 'winget install 7zip.7zip') and run again; those cars are skipped this time" }
     }
     if ($sources.Count -eq 0) {
         Write-Info "no car folders or zips in $carsRoot - nothing to do (see cars\README.md)"
@@ -611,7 +650,10 @@ else {
         $installed = 0; $skipped = 0
         foreach ($src in $sources) {
             $folder = $src.FullName; $tmp = $null
-            if ($src.PSIsContainer -eq $false) { $tmp = Expand-ToTemp $src.FullName; $folder = $tmp }
+            if ($src.PSIsContainer -eq $false) {
+                try { $tmp = Expand-ToTemp $src.FullName; $folder = $tmp }
+                catch { Write-Warn2 "$($src.Name): $($_.Exception.Message) - skipped"; $skipped++; continue }
+            }
             # folder/zip named after a game vehicle ("infernus", "cheetah", ...) = slot mode:
             # whatever the files inside are called, they replace that vehicle.
             $slotKey = ($src.BaseName -replace '[^A-Za-z0-9]', '').ToLowerInvariant()

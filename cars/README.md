@@ -7,9 +7,11 @@ only replace what's in it. Fill the slots below and the whole city is modern.
 
 1. Download a car mod made for the **classic PC Vice City** (not Definitive
    Edition, not Android, not San Andreas).
-2. Rename the zip to the slot name from the table, e.g. `infernus.zip`, and
-   put it in this folder. (A folder called `infernus\` with the files inside
-   works too. Files inside can be called anything.)
+2. Rename the archive to the slot name from the table, e.g. `infernus.rar`,
+   and put it in this folder. `.rar` (what libertycity ships), `.zip` and
+   `.7z` all work; a folder called `infernus\` with the files inside works
+   too. Files inside can be called anything, nested folders are fine.
+   (`.rar`/`.7z` need 7-Zip; the installer installs it via winget if missing.)
 3. Commit it to git / run `Install.bat`. The installer writes the model over
    the old car in `gta3.img`, applies the handling / carcols lines the mod
    ships in its readme, and removes the old car's data.
