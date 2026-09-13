@@ -289,6 +289,25 @@ function Get-ExeVersion([string]$exe) {
     } catch { return "unknown ($($_.Exception.Message))" }
 }
 
+function Set-LargeAddressAware([string]$exe) {
+    # Sets IMAGE_FILE_LARGE_ADDRESS_AWARE (0x20) in the PE header so the 32-bit
+    # game can use 4 GB of address space instead of 2 GB. On 64-bit Windows the
+    # game sizes its streaming memory at ~2 GB (half of a capped 'available
+    # physical memory' value), which overflows a 2 GB process: models stop
+    # loading while their collision stays. Returns 'set', 'already' or an error text.
+    $b = [System.IO.File]::ReadAllBytes($exe)
+    if ($b.Length -lt 0x40 -or $b[0] -ne 0x4D -or $b[1] -ne 0x5A) { return 'not a Windows exe' }
+    $pe = [BitConverter]::ToInt32($b, 0x3C)
+    if ($pe -le 0 -or $pe + 24 -gt $b.Length -or [BitConverter]::ToUInt32($b, $pe) -ne 0x00004550) { return 'not a PE file' }
+    $off = $pe + 22
+    $chars = [BitConverter]::ToUInt16($b, $off)
+    if (($chars -band 0x20) -ne 0) { return 'already' }
+    $chars = [uint16]($chars -bor 0x20)
+    [Array]::Copy([BitConverter]::GetBytes($chars), 0, $b, $off, 2)
+    [System.IO.File]::WriteAllBytes($exe, $b)
+    return 'set'
+}
+
 # ---------------------------------------------------------------------------
 # Backup / manifest
 # ---------------------------------------------------------------------------
@@ -493,7 +512,7 @@ function Invoke-Restore {
     $root = Join-Path $Game '_ultimate_mod_backup'
     $exe = Join-Path $Game 'gta-vc.exe'
     $layers = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
-    if ($BackupDir) { $dir = $BackupDir }
+    if ($BackupDir) { $dirs = @($BackupDir) }
     else {
         if (-not (Test-Path -LiteralPath $root)) {
             # the game folder was re-extracted: nothing of ours is in it, but the registry flags survive
@@ -504,39 +523,43 @@ function Invoke-Restore {
             }
             throw "No backups found in $root"
         }
-        $dir = (Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name | Select-Object -Last 1).FullName
+        # oldest first: the first backup of a file is the untouched original
+        $dirs = @(Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name | ForEach-Object { $_.FullName })
     }
-    $mf = Join-Path $dir 'manifest.json'
-    if (-not (Test-Path -LiteralPath $mf)) { throw "manifest.json not found in $dir" }
-    $m = Get-Content -LiteralPath $mf -Raw | ConvertFrom-Json
-    Write-Step "Restoring from $dir"
-    foreach ($rel in @($m.Added)) {
-        if (-not $rel) { continue }
+    $added = @{}; $backed = @{}; $reg = @{}
+    foreach ($dir in $dirs) {
+        $mf = Join-Path $dir 'manifest.json'
+        if (-not (Test-Path -LiteralPath $mf)) { continue }
+        $m = Get-Content -LiteralPath $mf -Raw | ConvertFrom-Json
+        foreach ($rel in @($m.Added))  { if ($rel) { $added[$rel] = $true } }
+        foreach ($rel in @($m.Backed)) { if ($rel -and -not $backed.ContainsKey($rel)) { $backed[$rel] = (Join-Path $dir $rel) } }
+        if ($m.Registry) { foreach ($p in $m.Registry.PSObject.Properties) { if (-not $reg.ContainsKey($p.Name)) { $reg[$p.Name] = $p.Value } } }
+    }
+    if ($added.Count -eq 0 -and $backed.Count -eq 0) { throw "no usable manifest.json in $root" }
+    Write-Step "Restoring from $($dirs.Count) backup(s) in $root"
+    foreach ($rel in $added.Keys) {
+        if ($backed.ContainsKey($rel)) { continue }      # was overwritten later but existed originally
         $f = Join-Path $Game $rel
         if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force; Write-Info "removed $rel" }
     }
-    # tidy up folders that only existed for the added files
-    foreach ($rel in @($m.Added)) {
-        if (-not $rel) { continue }
+    foreach ($rel in $added.Keys) {
         $d = Split-Path -Parent (Join-Path $Game $rel)
         while ($d -and $d.Length -gt $Game.Length -and (Test-Path -LiteralPath $d) -and -not (Get-ChildItem -LiteralPath $d -Force | Select-Object -First 1)) {
             Remove-Item -LiteralPath $d -Force; $d = Split-Path -Parent $d
         }
     }
-    foreach ($rel in @($m.Backed)) {
-        if (-not $rel) { continue }
-        $src = Join-Path $dir $rel
+    foreach ($rel in $backed.Keys) {
+        $src = $backed[$rel]
         if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $Game $rel) -Force; Write-Info "restored $rel" }
     }
-    if ($IsWin -and $m.Registry) {
-        $layers = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
-        foreach ($p in $m.Registry.PSObject.Properties) {
-            if ($p.Value) { Set-ItemProperty -Path $layers -Name $p.Name -Value $p.Value }
-            else { Remove-ItemProperty -Path $layers -Name $p.Name -ErrorAction SilentlyContinue }
-            Write-Info "registry compat flags for $($p.Name) restored"
+    if ($IsWin) {
+        foreach ($name in $reg.Keys) {
+            if ($reg[$name]) { Set-ItemProperty -Path $layers -Name $name -Value $reg[$name] }
+            else { Remove-ItemProperty -Path $layers -Name $name -ErrorAction SilentlyContinue }
+            Write-Info "registry compat flags for $name restored"
         }
+        Remove-ItemProperty -Path $layers -Name $exe -ErrorAction SilentlyContinue
     }
-    # empty CLEO folders are harmless; leave them.
     Write-Ok "Restore complete."
 }
 
@@ -740,7 +763,7 @@ New-Item -ItemType Directory -Path $script:BackupRoot -Force | Out-Null
 $Summary = New-Object System.Collections.ArrayList
 
 # ---- 1. ASI loader ---------------------------------------------------------
-Write-Step "1/6  ASI loader (dinput8.dll) - lets the game load .asi plugins"
+Write-Step "1/7  ASI loader (dinput8.dll) - lets the game load .asi plugins"
 $dinput = Join-Path $Game 'dinput8.dll'
 if (Test-Path -LiteralPath $dinput) {
     Write-Ok "dinput8.dll already present - keeping it (assumed to be an ASI loader)"
@@ -759,7 +782,7 @@ if (Test-Path -LiteralPath $dinput) {
 }
 
 # ---- 2. CLEO ---------------------------------------------------------------
-Write-Step "2/6  CLEO 2.2.0 (script engine; supports 1.0, 1.1 and Steam exes)"
+Write-Step "2/7  CLEO 2.2.0 (script engine; supports 1.0, 1.1 and Steam exes)"
 $zip = Get-Package $Packages.Cleo
 if ($zip) {
     $tmp = Expand-ToTemp $zip
@@ -770,7 +793,7 @@ if ($zip) {
 } else { [void]$Summary.Add("CLEO: FAILED") }
 
 # ---- 3. cheat scripts ------------------------------------------------------
-Write-Step "3/6  Cheat scripts (infinite health + infinite money)"
+Write-Step "3/7  Cheat scripts (infinite health + infinite money)"
 $cleoDir = Join-Path $Game 'CLEO'
 if (-not (Test-Path -LiteralPath $cleoDir)) { New-Item -ItemType Directory -Path $cleoDir | Out-Null }
 $scripts = Get-ChildItem -LiteralPath (Join-Path $ScriptRoot 'mods\CLEO') -Filter '*.cs'
@@ -781,7 +804,7 @@ foreach ($s in $scripts) {
 [void]$Summary.Add("Cheat scripts: " + (($scripts | ForEach-Object { $_.Name }) -join ', '))
 
 # ---- 4. SilentPatch --------------------------------------------------------
-Write-Step "4/6  SilentPatch (crash fixes, mouse lock-up fix, Windows 8+ compatibility)"
+Write-Step "4/7  SilentPatch (crash fixes, mouse lock-up fix, Windows 8+ compatibility)"
 if ($SkipSilentPatch) { Write-Info "skipped (-SkipSilentPatch)"; [void]$Summary.Add("SilentPatch: skipped") }
 else {
     $zip = Get-Package $Packages.SilentPatch
@@ -794,8 +817,20 @@ else {
     } else { [void]$Summary.Add("SilentPatch: FAILED") }
 }
 
-# ---- 5. mouse --------------------------------------------------------------
-Write-Step "5/6  Windows 11 mouse fix"
+# ---- 5. streaming memory ---------------------------------------------------
+Write-Step "5/7  Large Address Aware flag (fixes models/trees not loading, invisible walls)"
+try {
+    Backup-File $Exe | Out-Null
+    $r = Set-LargeAddressAware $Exe
+    switch ($r) {
+        'set'     { Write-Ok "gta-vc.exe can now use 4 GB of memory (one header bit changed; original exe is in the backup)"; [void]$Summary.Add("Large Address Aware: set") }
+        'already' { Write-Ok "gta-vc.exe already has the flag"; [void]$Summary.Add("Large Address Aware: already set") }
+        default   { Write-Warn2 "could not set the flag: $r"; [void]$Summary.Add("Large Address Aware: skipped ($r)") }
+    }
+} catch { Write-Warn2 "could not set the flag: $($_.Exception.Message)"; [void]$Summary.Add("Large Address Aware: FAILED") }
+
+# ---- 6. mouse --------------------------------------------------------------
+Write-Step "6/7  Windows 11 mouse fix"
 if ($SkipMouseFix) { Write-Info "skipped (-SkipMouseFix)"; [void]$Summary.Add("Mouse fix: skipped") }
 elseif (-not $IsWin) { Write-Info "not on Windows - registry step skipped" }
 else {
@@ -826,8 +861,8 @@ else {
     }
 }
 
-# ---- 6. cars ---------------------------------------------------------------
-Write-Step "6/6  Car mods from .\cars\"
+# ---- 7. cars ---------------------------------------------------------------
+Write-Step "7/7  Car mods from .\cars\"
 if ($SkipCars) { Write-Info "skipped (-SkipCars)"; [void]$Summary.Add("Cars: skipped") }
 else {
     $carsRoot = Join-Path $ScriptRoot 'cars'
@@ -936,4 +971,5 @@ Write-Host "  Undo     : Restore-Backup.bat"
 Write-Host ""
 Write-Host "Now start the game. 'CLEO 2.2.0' in the bottom-left corner of the main menu = success." -ForegroundColor Green
 Write-Host "Start a NEW game or load a save: money jumps to 99,999,999 and Tommy cannot be hurt."
-Write-Host "Controller / mouse: see README.md sections 5 and 6 for the in-game settings."
+Write-Host "In game: Options > Display Setup > Frame Limiter ON (the engine mis-streams the world above ~60 fps)." -ForegroundColor Yellow
+Write-Host "Controller / mouse: see README.md for the in-game settings."

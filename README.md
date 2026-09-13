@@ -12,8 +12,10 @@ One installer for the classic PC Vice City (Steam / retail, Windows 10/11):
 Nothing here is a trainer or an installer `.exe`. Everything the script
 downloads comes from the projects' own GitHub release pages and is checked
 against a SHA256 hash written in `install.ps1`. Your `gta-vc.exe` is never
-replaced (CLEO 2.2.0 works with 1.0, 1.1 and Steam exes). Every game file
-that gets changed is backed up first; `Restore-Backup.bat` undoes everything.
+replaced (CLEO 2.2.0 works with 1.0, 1.1 and Steam exes); the only change to
+it is one header bit, "Large Address Aware", so the game can use 4 GB of
+memory. Every game file that gets changed is backed up first;
+`Restore-Backup.bat` undoes everything.
 
 ## Install
 
@@ -28,6 +30,8 @@ that gets changed is backed up first; `Restore-Backup.bat` undoes everything.
    summary.
 3. Start the game. **`CLEO 2.2.0`** in the bottom-left of the menu means it
    worked. Load a save: money is $99,999,999 and Tommy can't be hurt.
+4. Options → Display Setup → **Frame Limiter ON**. Above ~60 fps the 2002
+   engine streams the world late (invisible trees/walls) and breaks physics.
 
 Run `Install.bat` again any time (after adding cars, for example); finished
 steps are skipped.
@@ -40,6 +44,7 @@ steps are skipped.
 | CLEO | `VC.CLEO.asi`, `CLEO\` | cleolibrary III.VC.CLEO v2.2.0 |
 | Cheats | `CLEO\infinite_health.cs`, `CLEO\infinite_money.cs`, `CLEO\no_bike_fall.cs` | this repo (source: `tools\cleo_asm.py`) |
 | SilentPatch | `SilentPatchVC.asi` + fixed `data\maps\*.ipl` | CookiePLMonster/SilentPatch build 12.1 |
+| Memory | Large Address Aware bit set in `gta-vc.exe` (models/trees not loading, invisible walls, crashes after a while) | – |
 | Mouse | compatibility flags on `gta-vc.exe` (registry) | – |
 | Cars | old model + textures replaced inside `models\gta3.img`, matching `handling.cfg` / `carcols.dat` lines swapped, old data compacted away | `cars\` |
 | Backup | `_ultimate_mod_backup\<date>\` with a manifest | – |
@@ -101,6 +106,7 @@ Vice City only looks for controllers at launch.
 | "Cannot find 640x480 video mode" | the settings file is missing and modern GPUs have no 16-bit 640×480 mode; run `Install.bat`, SilentPatch makes the game default to your desktop resolution instead |
 | No `CLEO 2.2.0` text in the menu | rename `dinput8.dll` to `ddraw.dll` in the game folder |
 | Installer says exe version *unknown* | your copy has a patched exe; CLEO may still load, otherwise use a clean 1.0/1.1/Steam copy |
+| Trees / walls / buildings invisible but solid, textures missing | streaming memory: run `Install.bat` (sets Large Address Aware) and turn **Frame Limiter ON** in Display Setup |
 | Crash on loading after adding a car | that model is broken/too heavy: delete its zip from `cars\`, run `Restore-Backup.bat`, then `Install.bat` |
 | Defender flags `dinput8.dll` / `.asi` | expected for code-injecting DLLs; the hashes in `install.ps1` match the official GitHub releases |
 
