@@ -10,12 +10,12 @@ repo, like the cars.
 | | Cheat | What it does | Downside |
 |---|---|---|---|
 | A1 | **Never wanted** | wanted level stays at 0 stars, cops ignore you | police-chase missions become trivial |
-| A2 | **All weapons + infinite ammo** | every weapon in every slot, ammo never drops | none, you can still switch to fists |
-| A3 | **Infinite sprint** | Tommy never gets tired | none |
+| A2 | ~~All weapons + infinite ammo~~ **installed** | every weapon in every slot, ammo never drops | none, you can still switch to fists |
+| A3 | ~~Infinite sprint~~ **installed** | Tommy never gets tired | none |
 | A4 | **Car spawner hotkeys** | e.g. F5 Infernus, F6 PCJ-600, F7 Hunter, F8 Rhino; list is yours to pick | none |
 | A5 | **Time & weather keys** | e.g. F9 = jump 1 hour, F10 = cycle weather (sunny → rain → fog) | none |
 | A6 | **Freeze clock** | keep it always day (or always night) | none |
-| A7 | **Nobody can pull you out of a car** | cops/peds can't drag you out (the bike script already does this on bikes) | none |
+| A7 | ~~Nobody can pull you out of a car~~ **installed** | cops/peds can't drag you out (the bike script already does this on bikes) | none |
 | A8 | **Fast cars** | +30 % top speed and acceleration on every car via `handling.cfg` | AI drivers get faster too |
 | A9 | **Slow motion / fast forward key** | game speed 0.3× or 2× while a key is held | none |
 | A10 | **Every property bought, map fully open** | all safehouses/businesses owned and both islands open from a new game | done via a modified save game rather than a script; you'd start from that save |
@@ -24,11 +24,11 @@ repo, like the cars.
 
 | | Add-on | What it does | Cost |
 |---|---|---|---|
-| B1 | **Widescreen Fix** (ThirteenAG) | proper 16:9 / ultrawide, correct FOV, HUD and radar scaling, borderless window, no loading screen between islands, anti-aliasing option | none, strongly recommended |
-| B2 | **Project2DFX** (ThirteenAG) | much longer draw distance, thousands of street/neon lights visible at night, distant cars with headlights | a bit of GPU, looks far more "modern" |
-| B3 | **SkyGfx VC** (aap) | the PS2 look: motion-blur trails, PS2 colours and water, or the Xbox look with reflections | taste – some prefer the plain PC look; switchable in its ini |
-| B4 | **Framerate Vigilante** (GTAmodding) | fixes physics/animation at high fps so you can run the frame limiter OFF at 144 fps | only useful if you want > 30 fps |
-| B5 | **mousefix.asi** (sfwidde) | extra mouse-lock fix + vertical sensitivity | only works on the 1.0 exe; the installer already has `-InstallMouseFixAsi` |
+| B1 | ~~Widescreen Fix~~ **installed** | proper 16:9 / ultrawide, correct FOV, HUD and radar scaling, borderless window, no loading screen between islands, anti-aliasing option | none, strongly recommended |
+| B2 | ~~Project2DFX~~ **installed** (draw-distance target set for a 30 fps limiter) | much longer draw distance, thousands of street/neon lights visible at night, distant cars with headlights | a bit of GPU, looks far more "modern" |
+| B3 | ~~SkyGfx VC~~ **installed on 1.0 exes**, skipped on 1.1/Steam (the mod only supports 1.0) | the PS2 look: motion-blur trails, PS2 colours and water, or the Xbox look with reflections | taste – some prefer the plain PC look; switchable in its ini |
+| B4 | **Framerate Vigilante** – *not added*: no official GitHub release (ModDB only), only an unofficial fork; keep the frame limiter ON instead | fixes physics/animation at high fps so you can run the frame limiter OFF at 144 fps | only useful if you want > 30 fps |
+| B5 | **mousefix.asi** – opt-in via `-InstallMouseFixAsi`: SilentPatch already patches the same mouse code, so add it only if the mouse still misbehaves | extra mouse-lock fix + vertical sensitivity | only works on the 1.0 exe; the installer already has `-InstallMouseFixAsi` |
 
 ## C. Content you download, installer applies
 

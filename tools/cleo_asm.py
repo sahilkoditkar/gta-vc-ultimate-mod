@@ -123,6 +123,26 @@ SET_CHAR_CANT_BE_DRAGGED_OUT = 0x039E   # nobody can pull the actor off / out of
 SET_CAR_CAN_BE_DAMAGED = 0x03F5    # 0 = CBike::VehicleDamage returns early -> no collision knock-off
 IS_PLAYER_ON_ANY_BIKE = 0x047E
 SET_CAN_BURST_CAR_TYRES = 0x053F   # 0 = no burst -> no CBike::BurstTyre knock-off
+GIVE_WEAPON_TO_PLAYER = 0x01B1     # player, weaponType, ammo (adds ammo if already owned)
+REQUEST_MODEL = 0x0247
+MARK_MODEL_AS_NO_LONGER_NEEDED = 0x0249
+LOAD_ALL_MODELS_NOW = 0x038B
+SET_PLAYER_NEVER_GETS_TIRED = 0x0330
+GET_AMMO_IN_PLAYER_WEAPON = 0x0419 # player, weaponType -> ammo
+GET_CURRENT_CHAR_WEAPON = 0x0470   # actor -> weaponType
+
+# weaponType (eWeaponType) and the model id the game must have loaded before giving it
+WEAPONS = [
+    (10, 268),  # katana
+    (12, 270),  # grenade
+    (18, 275),  # python
+    (20, 278),  # spas12 shotgun
+    (25, 284),  # mp5
+    (26, 280),  # m4
+    (29, 286),  # laserscope sniper rifle
+    (30, 287),  # rocket launcher
+]
+AMMO = 30000
 SET_CAR_PROOFS = 0x02AC            # car immunities  BP FP EP CP MP
 ADD_ARMOUR_TO_CHAR = 0x035F
 STORE_CAR_CHAR_IS_IN_NO_SAVE = 0x03C0
@@ -245,7 +265,87 @@ def build_no_bike_fall():
     return a
 
 
+def build_all_weapons():
+    """
+    All weapons + infinite ammo.
+    Once per life: load the weapon models, hand out one weapon per slot.
+    Every second: read the weapon in hand; if its ammo is below 3000, give it
+    again (the game adds the ammo to the same slot, so guns you pick up on
+    the street are refilled too, not replaced).
+    """
+    a = Asm()
+    a.op(SET_LVAR_INT, lv(1), 0)                 # 1@ = weapons handed out this life?
+    a.label("LOOP")
+    a.op(WAIT, 1000)
+    a.op(IF, 0)
+    a.op(IS_PLAYER_PLAYING, PLAYER_CHAR)
+    a.op(GOTO_IF_FALSE, lbl("NOT_PLAYING"))
+    a.op(IF, 0)
+    a.op(IS_INT_LVAR_EQUAL, lv(1), 1)
+    a.op(GOTO_IF_FALSE, lbl("GIVE"))
+    # refill the weapon in hand
+    a.op(GET_CURRENT_CHAR_WEAPON, PLAYER_ACTOR, lv(2))   # 2@ = type
+    a.op(IF, 0)
+    a.op(IS_INT_LVAR_GREATER_THAN, lv(2), 0)    # unarmed -> nothing to refill
+    a.op(GOTO_IF_FALSE, lbl("LOOP"))
+    a.op(GET_AMMO_IN_PLAYER_WEAPON, PLAYER_CHAR, lv(2), lv(3))   # 3@ = ammo
+    a.op(IF, 0)
+    a.op(IS_INT_LVAR_GREATER_THAN, lv(3), 2999)
+    a.op(GOTO_IF_FALSE, lbl("REFILL"))
+    a.op(GOTO, lbl("LOOP"))
+    a.label("REFILL")
+    a.op(GIVE_WEAPON_TO_PLAYER, PLAYER_CHAR, lv(2), AMMO)
+    a.op(GOTO, lbl("LOOP"))
+
+    a.label("NOT_PLAYING")                       # wasted / busted: weapons are gone, hand out again next time
+    a.op(SET_LVAR_INT, lv(1), 0)
+    a.op(GOTO, lbl("LOOP"))
+
+    a.label("GIVE")
+    for _, model in WEAPONS:
+        a.op(REQUEST_MODEL, model)
+    a.op(LOAD_ALL_MODELS_NOW)
+    for wtype, _ in WEAPONS:
+        a.op(GIVE_WEAPON_TO_PLAYER, PLAYER_CHAR, wtype, AMMO)
+    for _, model in WEAPONS:
+        a.op(MARK_MODEL_AS_NO_LONGER_NEEDED, model)
+    a.op(SET_LVAR_INT, lv(1), 1)
+    a.op(GOTO, lbl("LOOP"))
+    return a
+
+
+def build_infinite_sprint():
+    a = Asm()
+    a.op(SET_LVAR_INT, lv(0), 0)
+    a.label("LOOP")
+    a.op(WAIT, 1000)
+    a.op(IF, 0)
+    a.op(IS_PLAYER_PLAYING, PLAYER_CHAR)
+    a.op(GOTO_IF_FALSE, lbl("LOOP"))
+    a.op(SET_PLAYER_NEVER_GETS_TIRED, PLAYER_CHAR, 1)
+    a.op(GOTO, lbl("LOOP"))
+    return a
+
+
+def build_no_dragout():
+    """Nobody can pull Tommy out of a car (or off a bike). Every frame, so it
+    also wins over no_bike_fall.cs resetting the flag when leaving a bike."""
+    a = Asm()
+    a.op(SET_LVAR_INT, lv(0), 0)
+    a.label("LOOP")
+    a.op(WAIT, 0)
+    a.op(IF, 0)
+    a.op(IS_PLAYER_PLAYING, PLAYER_CHAR)
+    a.op(GOTO_IF_FALSE, lbl("LOOP"))
+    a.op(SET_CHAR_CANT_BE_DRAGGED_OUT, PLAYER_ACTOR, 1)
+    a.op(GOTO, lbl("LOOP"))
+    return a
+
+
 SCRIPTS = {
+    "all_weapons.cs": build_all_weapons,
+    "infinite_sprint.cs": build_infinite_sprint,
+    "no_dragout.cs": build_no_dragout,
     "no_bike_fall.cs": build_no_bike_fall,
     "infinite_health.cs": build_infinite_health,
     "infinite_money.cs": build_infinite_money,

@@ -5,6 +5,10 @@ One installer for the classic PC Vice City (Steam / retail, Windows 10/11):
 * **infinite health** (nothing can hurt you, your car can't blow up)
 * **infinite money** ($99,999,999, always refilled)
 * **never fall off a bike** (crashes, burst tyres and cops pulling you off)
+* **all weapons, infinite ammo** (whatever you hold is refilled, also picked-up guns)
+* **infinite sprint**, **nobody can pull you out of a car**
+* **widescreen / ultrawide fix**, **long draw distance + city lights at night**
+  (Project2DFX), **PS2-style graphics** (SkyGfx, 1.0 exe only)
 * **modern cars** – every car in `cars\` replaces an old one
 * **Windows 11 mouse fix**
 * crash fixes (SilentPatch) and EvoFox controller notes
@@ -42,7 +46,10 @@ steps are skipped.
 |---|---|---|
 | ASI loader | `dinput8.dll` | Ultimate ASI Loader v9.7.4 |
 | CLEO | `VC.CLEO.asi`, `CLEO\` | cleolibrary III.VC.CLEO v2.2.0 |
-| Cheats | `CLEO\infinite_health.cs`, `CLEO\infinite_money.cs`, `CLEO\no_bike_fall.cs` | this repo (source: `tools\cleo_asm.py`) |
+| Cheats | `CLEO\infinite_health.cs`, `infinite_money.cs`, `no_bike_fall.cs`, `all_weapons.cs`, `infinite_sprint.cs`, `no_dragout.cs` | this repo (source: `tools\cleo_asm.py`) |
+| Widescreen | `scripts\GTAVC.WidescreenFix.asi` + ini | ThirteenAG/WidescreenFixesPack |
+| Draw distance & lights | `VCLodLights.asi/.dat/.ini`, `III.VC.SA.LimitAdjuster.asi/.ini` | ThirteenAG/III.VC.SA.IV.Project2DFX |
+| PS2 look (1.0 exe only) | `skygfx.asi`, `skygfx.ini`, `rwd3d9.dll`, `neo\`, `d3d8.dll` (d3d8to9) | aap/skygfx_vc v2.7 |
 | SilentPatch | `SilentPatchVC.asi` + fixed `data\maps\*.ipl` | CookiePLMonster/SilentPatch build 12.1 |
 | Memory | Large Address Aware bit set in `gta-vc.exe` (models/trees not loading, invisible walls, crashes after a while) | – |
 | Mouse | compatibility flags on `gta-vc.exe` (registry) | – |
@@ -50,6 +57,13 @@ steps are skipped.
 | Backup | `_ultimate_mod_backup\<date>\` with a manifest | – |
 
 To remove a cheat later, delete its `.cs` file from the game's `CLEO\` folder.
+Graphics add-ons can be left out with `-SkipWidescreen`, `-Skip2DFX`,
+`-SkipSkyGfx` (edit the line in `Install.bat`), and tuned in their `.ini`
+files: `VCLodLights.ini` (draw distance, number of lights) is the one that
+costs GPU on a weak laptop; `skygfx.ini` switches the PS2/Xbox effects.
+Note: the two ThirteenAG downloads live under a rolling release tag, so
+when the author rebuilds them the hash check fails and that step is
+skipped with a warning until the hash in `install.ps1` is refreshed.
 
 ## Cars
 

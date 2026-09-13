@@ -18,6 +18,12 @@
     Do not write the Windows compatibility flags for gta-vc.exe.
 .PARAMETER SkipCars
     Do not touch gta3.img / handling / carcols (ignore the cars\ folder).
+.PARAMETER SkipWidescreen
+    Do not install ThirteenAG's Widescreen Fix (16:9/ultrawide, FOV, HUD scaling, no island loading).
+.PARAMETER Skip2DFX
+    Do not install Project2DFX (draw distance, night-time city lights) + LimitAdjuster.
+.PARAMETER SkipSkyGfx
+    Do not install SkyGfx (PS2-style graphics; only installs on a 1.0 exe anyway).
 .PARAMETER InstallMouseFixAsi
     Also install sfwidde's mousefix.asi (only works with the 1.0 exe; skipped otherwise).
 .PARAMETER NoDownload
@@ -39,6 +45,9 @@ param(
     [switch]$SkipSilentPatch,
     [switch]$SkipMouseFix,
     [switch]$SkipCars,
+    [switch]$SkipWidescreen,
+    [switch]$Skip2DFX,
+    [switch]$SkipSkyGfx,
     [switch]$InstallMouseFixAsi,
     [switch]$NoDownload,
     [switch]$Restore,
@@ -74,6 +83,24 @@ $Packages = @{
         File = 'SilentPatchVC-1.1-BUILD34.1-SA.zip'
         Url  = 'https://github.com/CookiePLMonster/SilentPatch/releases/download/1.1-BUILD34.1-SA/SilentPatchVC.zip'
         Sha  = '37189B72835316AC1D20D13E686D5FE986FFDE51755DE5D730BA5795378840AB'
+    }
+    Widescreen = @{
+        Name = 'Widescreen Fix (ThirteenAG)'
+        File = 'GTAVC.WidescreenFix.zip'
+        Url  = 'https://github.com/ThirteenAG/WidescreenFixesPack/releases/download/gtavc/GTAVC.WidescreenFix.zip'
+        Sha  = '63D7381729C9E12D3F46D534EF99BF38DA7A9912654531AF21FB386F4AFF5D85'
+    }
+    Project2DFX = @{
+        Name = 'Project2DFX + LimitAdjuster (ThirteenAG)'
+        File = 'VC.Project2DFX.zip'
+        Url  = 'https://github.com/ThirteenAG/III.VC.SA.IV.Project2DFX/releases/download/gtavc/VC.Project2DFX.zip'
+        Sha  = 'AD82978D9DFBC02F388A12C192CCB0DE07B76D800361D6566F8FEF2BF03236E9'
+    }
+    SkyGfx = @{
+        Name = 'SkyGfx 2.7 (aap) - 1.0 exe only'
+        File = 'SkyGfx_III_VC_2.7.zip'
+        Url  = 'https://github.com/aap/skygfx_vc/releases/download/v2.7/SkyGfx_III_VC_2.7.zip'
+        Sha  = 'BCDA8034B1257CFCB9E258225A0E6506B3352F7ACD38694B3718B2B1B5C1DA0C'
     }
     MouseFix = @{
         Name = 'gta-vc-mouse-fix v3.0.2 (sfwidde) - 1.0 exe only'
@@ -595,6 +622,9 @@ function Invoke-Diagnose {
         @{ Name = 'ASI loader (dinput8.dll)';    Files = @('dinput8.dll') },
         @{ Name = 'CLEO (VC.CLEO.asi + scripts)'; Files = @('VC.CLEO.asi') },
         @{ Name = 'SilentPatch (SilentPatchVC.asi)'; Files = @('SilentPatchVC.asi') },
+        @{ Name = 'Widescreen Fix';              Files = @('scripts\GTAVC.WidescreenFix.asi') },
+        @{ Name = 'Project2DFX + LimitAdjuster'; Files = @('VCLodLights.asi', 'III.VC.SA.LimitAdjuster.asi') },
+        @{ Name = 'SkyGfx (+ d3d8to9)';          Files = @('skygfx.asi', 'd3d8.dll') },
         @{ Name = 'mousefix.asi';                Files = @('mousefix.asi') }
     )
     $present = @()
@@ -763,7 +793,7 @@ New-Item -ItemType Directory -Path $script:BackupRoot -Force | Out-Null
 $Summary = New-Object System.Collections.ArrayList
 
 # ---- 1. ASI loader ---------------------------------------------------------
-Write-Step "1/7  ASI loader (dinput8.dll) - lets the game load .asi plugins"
+Write-Step "1/8  ASI loader (dinput8.dll) - lets the game load .asi plugins"
 $dinput = Join-Path $Game 'dinput8.dll'
 if (Test-Path -LiteralPath $dinput) {
     Write-Ok "dinput8.dll already present - keeping it (assumed to be an ASI loader)"
@@ -782,7 +812,7 @@ if (Test-Path -LiteralPath $dinput) {
 }
 
 # ---- 2. CLEO ---------------------------------------------------------------
-Write-Step "2/7  CLEO 2.2.0 (script engine; supports 1.0, 1.1 and Steam exes)"
+Write-Step "2/8  CLEO 2.2.0 (script engine; supports 1.0, 1.1 and Steam exes)"
 $zip = Get-Package $Packages.Cleo
 if ($zip) {
     $tmp = Expand-ToTemp $zip
@@ -793,7 +823,7 @@ if ($zip) {
 } else { [void]$Summary.Add("CLEO: FAILED") }
 
 # ---- 3. cheat scripts ------------------------------------------------------
-Write-Step "3/7  Cheat scripts (infinite health + infinite money)"
+Write-Step "3/8  Cheat scripts (infinite health + infinite money)"
 $cleoDir = Join-Path $Game 'CLEO'
 if (-not (Test-Path -LiteralPath $cleoDir)) { New-Item -ItemType Directory -Path $cleoDir | Out-Null }
 $scripts = Get-ChildItem -LiteralPath (Join-Path $ScriptRoot 'mods\CLEO') -Filter '*.cs'
@@ -804,7 +834,7 @@ foreach ($s in $scripts) {
 [void]$Summary.Add("Cheat scripts: " + (($scripts | ForEach-Object { $_.Name }) -join ', '))
 
 # ---- 4. SilentPatch --------------------------------------------------------
-Write-Step "4/7  SilentPatch (crash fixes, mouse lock-up fix, Windows 8+ compatibility)"
+Write-Step "4/8  SilentPatch (crash fixes, mouse lock-up fix, Windows 8+ compatibility)"
 if ($SkipSilentPatch) { Write-Info "skipped (-SkipSilentPatch)"; [void]$Summary.Add("SilentPatch: skipped") }
 else {
     $zip = Get-Package $Packages.SilentPatch
@@ -818,7 +848,7 @@ else {
 }
 
 # ---- 5. streaming memory ---------------------------------------------------
-Write-Step "5/7  Large Address Aware flag (fixes models/trees not loading, invisible walls)"
+Write-Step "5/8  Large Address Aware flag (fixes models/trees not loading, invisible walls)"
 try {
     Backup-File $Exe | Out-Null
     $r = Set-LargeAddressAware $Exe
@@ -829,8 +859,68 @@ try {
     }
 } catch { Write-Warn2 "could not set the flag: $($_.Exception.Message)"; [void]$Summary.Add("Large Address Aware: FAILED") }
 
-# ---- 6. mouse --------------------------------------------------------------
-Write-Step "6/7  Windows 11 mouse fix"
+# ---- 6. graphics extras ----------------------------------------------------
+Write-Step "6/8  Graphics: Widescreen Fix, Project2DFX, SkyGfx"
+$scriptsDir = Join-Path $Game 'scripts'
+if ($SkipWidescreen) { Write-Info "Widescreen Fix skipped (-SkipWidescreen)"; [void]$Summary.Add("Widescreen Fix: skipped") }
+else {
+    $zip = Get-Package $Packages.Widescreen
+    if ($zip) {
+        $tmp = Expand-ToTemp $zip
+        # only the plugin itself: the zip's d3d8.dll is a second ASI loader and its global.ini
+        # would stop our dinput8.dll loader from loading CLEO / SilentPatch from the game root
+        foreach ($f in 'GTAVC.WidescreenFix.asi', 'GTAVC.WidescreenFix.ini') {
+            $src = Get-ChildItem -LiteralPath $tmp -Recurse -File -Filter $f | Select-Object -First 1
+            if ($src) { Install-File $src.FullName (Join-Path $scriptsDir $f) }
+        }
+        Remove-Item -LiteralPath $tmp -Recurse -Force
+        Write-Ok "installed scripts\GTAVC.WidescreenFix.asi (+ ini)"
+        [void]$Summary.Add("Widescreen Fix: installed")
+    } else { [void]$Summary.Add("Widescreen Fix: FAILED") }
+}
+if ($Skip2DFX) { Write-Info "Project2DFX skipped (-Skip2DFX)"; [void]$Summary.Add("Project2DFX: skipped") }
+else {
+    $zip = Get-Package $Packages.Project2DFX
+    if ($zip) {
+        $tmp = Expand-ToTemp $zip
+        $ini = Get-ChildItem -LiteralPath $tmp -Recurse -File -Filter 'VCLodLights.ini' | Select-Object -First 1
+        if ($ini) {
+            # the dynamic draw distance aims at this fps; with the frame limiter on (30 fps) a 60 target would keep it minimal
+            $t = [System.IO.File]::ReadAllText($ini.FullName) -replace '(?m)^TargetFPS\s*=\s*\d+', 'TargetFPS = 25'
+            [System.IO.File]::WriteAllText($ini.FullName, $t)
+        }
+        Install-Tree $tmp @()
+        Remove-Item -LiteralPath $tmp -Recurse -Force
+        Write-Ok "installed VCLodLights.asi/.dat/.ini + III.VC.SA.LimitAdjuster.asi/.ini"
+        [void]$Summary.Add("Project2DFX: installed")
+    } else { [void]$Summary.Add("Project2DFX: FAILED") }
+}
+if ($SkipSkyGfx) { Write-Info "SkyGfx skipped (-SkipSkyGfx)"; [void]$Summary.Add("SkyGfx: skipped") }
+elseif ($ExeVersion -ne '1.0') { Write-Warn2 "SkyGfx 2.7 only works with the 1.0 exe (yours: $ExeVersion) - skipped"; [void]$Summary.Add("SkyGfx: skipped (needs 1.0 exe)") }
+else {
+    $zip = Get-Package $Packages.SkyGfx
+    if ($zip) {
+        $tmp = Expand-ToTemp $zip
+        $root = Get-ChildItem -LiteralPath $tmp -Recurse -File -Filter 'skygfx.asi' | Select-Object -First 1
+        if ($root) {
+            $base = $root.DirectoryName
+            Install-File $root.FullName (Join-Path $Game 'skygfx.asi')
+            Install-File (Join-Path $base 'rwd3d9.dll') (Join-Path $Game 'rwd3d9.dll')
+            Install-File (Join-Path $base 'VC\skygfx.ini') (Join-Path $Game 'skygfx.ini')
+            foreach ($f in (Get-ChildItem -LiteralPath (Join-Path $base 'VC\neo') -File)) {
+                Install-File $f.FullName (Join-Path (Join-Path $Game 'neo') $f.Name)
+            }
+            # d3d8to9 wrapper (crosire), needed by SkyGfx for its d3d9 features; never overwrite an existing d3d8.dll
+            if (-not (Test-Path -LiteralPath (Join-Path $Game 'd3d8.dll'))) { Install-File (Join-Path $base 'd3d8.dll') (Join-Path $Game 'd3d8.dll') }
+            Write-Ok "installed skygfx.asi, skygfx.ini, rwd3d9.dll, neo\, d3d8.dll (d3d8to9)"
+            [void]$Summary.Add("SkyGfx: installed")
+        } else { Write-Warn2 "skygfx.asi not found in the archive"; [void]$Summary.Add("SkyGfx: FAILED") }
+        Remove-Item -LiteralPath $tmp -Recurse -Force
+    } else { [void]$Summary.Add("SkyGfx: FAILED") }
+}
+
+# ---- 7. mouse --------------------------------------------------------------
+Write-Step "7/8  Windows 11 mouse fix"
 if ($SkipMouseFix) { Write-Info "skipped (-SkipMouseFix)"; [void]$Summary.Add("Mouse fix: skipped") }
 elseif (-not $IsWin) { Write-Info "not on Windows - registry step skipped" }
 else {
@@ -861,8 +951,8 @@ else {
     }
 }
 
-# ---- 7. cars ---------------------------------------------------------------
-Write-Step "7/7  Car mods from .\cars\"
+# ---- 8. cars ---------------------------------------------------------------
+Write-Step "8/8  Car mods from .\cars\"
 if ($SkipCars) { Write-Info "skipped (-SkipCars)"; [void]$Summary.Add("Cars: skipped") }
 else {
     $carsRoot = Join-Path $ScriptRoot 'cars'
