@@ -531,14 +531,14 @@ function Invoke-Restore {
         $mf = Join-Path $dir 'manifest.json'
         if (-not (Test-Path -LiteralPath $mf)) { continue }
         $m = Get-Content -LiteralPath $mf -Raw | ConvertFrom-Json
-        foreach ($rel in @($m.Added))  { if ($rel) { $added[$rel] = $true } }
-        foreach ($rel in @($m.Backed)) { if ($rel -and -not $backed.ContainsKey($rel)) { $backed[$rel] = (Join-Path $dir $rel) } }
+        # first record of a file wins: added by an early run = delete; present before any run = restore
+        foreach ($rel in @($m.Backed)) { if ($rel -and -not $backed.ContainsKey($rel) -and -not $added.ContainsKey($rel)) { $backed[$rel] = (Join-Path $dir $rel) } }
+        foreach ($rel in @($m.Added))  { if ($rel -and -not $backed.ContainsKey($rel) -and -not $added.ContainsKey($rel)) { $added[$rel] = $true } }
         if ($m.Registry) { foreach ($p in $m.Registry.PSObject.Properties) { if (-not $reg.ContainsKey($p.Name)) { $reg[$p.Name] = $p.Value } } }
     }
     if ($added.Count -eq 0 -and $backed.Count -eq 0) { throw "no usable manifest.json in $root" }
     Write-Step "Restoring from $($dirs.Count) backup(s) in $root"
     foreach ($rel in $added.Keys) {
-        if ($backed.ContainsKey($rel)) { continue }      # was overwritten later but existed originally
         $f = Join-Path $Game $rel
         if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force; Write-Info "removed $rel" }
     }
