@@ -337,6 +337,37 @@ function Set-FirstToken([string]$line, [string]$token, [string]$kind) {
     return $m.Groups[1].Value + $token + $m.Groups[3].Value
 }
 
+function Compact-Img([string]$imgPath, [string]$dirPath, $entries) {
+    # Rewrites gta3.img so it contains exactly the current entries, back to back.
+    # Replaced files that did not fit in place were appended, leaving the old
+    # bytes as dead space; this removes them for good.
+    $used = 0; foreach ($e in $entries) { $used += [int64]$e.Size * 2048 }
+    $len = (Get-Item -LiteralPath $imgPath).Length
+    if ($len -le $used) { return }
+    $tmp = "$imgPath.compact"
+    $in  = [System.IO.File]::Open($imgPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
+    $out = [System.IO.File]::Open($tmp, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+    try {
+        $buf = New-Object byte[] (1024 * 1024)
+        $pos = [uint32]0
+        foreach ($e in $entries) {
+            $in.Position = [int64]$e.Offset * 2048
+            $left = [int64]$e.Size * 2048
+            while ($left -gt 0) {
+                $n = $in.Read($buf, 0, [int][Math]::Min($buf.Length, $left))
+                if ($n -le 0) { break }
+                $out.Write($buf, 0, $n); $left -= $n
+            }
+            if ($left -gt 0) { $out.Write((New-Object byte[] $left), 0, [int]$left) }   # truncated source: pad
+            $e.Offset = $pos
+            $pos += $e.Size
+        }
+    } finally { $in.Close(); $out.Close() }
+    Move-Item -LiteralPath $tmp -Destination $imgPath -Force
+    Write-ImgDir $dirPath $entries
+    Write-Ok ("gta3.img compacted: {0:N2} MB of old car data removed" -f (($len - $used) / 1MB))
+}
+
 function Update-DataLine([string]$dataFile, [string]$newLine, [string]$kind) {
     # Replace the line in handling.cfg / carcols.dat whose vehicle name matches $newLine's.
     $newLine = $newLine.Trim()
@@ -624,6 +655,7 @@ else {
             if ($exes) { Write-Warn2 "ignored executable(s) inside the mod: $(($exes | ForEach-Object { $_.Name }) -join ', ')" }
             if ($tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
         }
+        if ($installed -gt 0) { Compact-Img $img $dir $entries }
         [void]$Summary.Add("Cars: $installed model file(s) installed, $skipped skipped")
     }
 }

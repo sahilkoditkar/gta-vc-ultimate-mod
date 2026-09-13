@@ -1,70 +1,41 @@
-# cars/ — the "every car modern" plan
+# cars/ – one zip per car
 
-Vice City cannot *delete* a vehicle: every car in traffic is one of 64 fixed
-slots. "Removing the old cars" therefore means **replacing all 64 slots**.
-This folder is where the replacements go, and the table below is the full
-slot list with a modern real-car suggestion for each, so the whole city looks
-current, not just a few exotics.
+Every car in traffic is one of 64 fixed slots; the game can't delete a slot,
+only replace what's in it. Fill the slots below and the whole city is modern.
 
-## How to add a car (30 seconds each)
+## Adding a car (no extracting, no renaming inside)
 
-1. Download a car mod for **the classic PC Vice City** (not "Definitive
-   Edition", not iOS/Android, not San Andreas — those use different formats).
-2. Make a folder here **named after the slot it replaces** (first column of the
-   table) and put the mod's files inside — names inside don't matter:
+1. Download a car mod made for the **classic PC Vice City** (not Definitive
+   Edition, not Android, not San Andreas).
+2. Rename the zip to the slot name from the table, e.g. `infernus.zip`, and
+   put it in this folder. (A folder called `infernus\` with the files inside
+   works too. Files inside can be called anything.)
+3. Commit it to git / run `Install.bat`. The installer writes the model over
+   the old car in `gta3.img`, applies the handling / carcols lines the mod
+   ships in its readme, and removes the old car's data.
 
-   ```
-   cars\
-     infernus\                 <- slot name = folder name
-       Lamborghini_Aventador.dff
-       Lamborghini_Aventador.txd
-       readme handling.txt     <- optional; any *.txt with "handling" in the name
-       carcols.txt             <- optional; any *.txt with "carcol" in the name
-     cheetah.zip               <- a zip named after the slot works the same way
-   ```
+Only `.dff` / `.txd` / `.txt` are used – they are data and can't run code.
+Any `.exe` / `.bat` inside a mod is ignored and reported; never run one.
+Scan downloads with Defender (right-click → *Scan with Microsoft Defender*).
 
-   The installer renames the `.dff`/`.txd` to the slot's names inside
-   `models\gta3.img`, and rewrites the vehicle name on handling / carcols
-   lines to the slot's IDs (taken from your own `data\default.ide`), so lines
-   that mod authors paste into their readme just work.
-3. Run `Install.bat` again. Only the new folders take a moment; everything
-   else says "already installed".
+## Where to download
 
-Multiple `.dff` files in one folder (e.g. a mod that also ships a wheel or
-an LOD) fall back to name-matching, so keep one car per folder.
+* By slot (best): `https://libertycity.net/files/gta-vice-city/zamena/<slot>.dff/`
+  – e.g. https://libertycity.net/files/gta-vice-city/zamena/infernus.dff/ lists
+  70+ cars made for the Infernus slot; sort by rating, take a recent one.
+* By brand: https://libertycity.net/files/gta-vice-city/vehicles/cars/
+* Also: https://www.gtainside.com/en/vicecity/cars/ and https://www.gtagarage.com/mods/browse.php?C=11
+* Whole packs (many slots in one zip, files already named `infernus.dff` etc.
+  – put the whole pack in one folder here, any name):
+  https://libertycity.net/files/gta-vice-city/vehicles/car-packs/
+* *Ultimate Vice City 2.1* (the 2000s mod, 40 real cars) on ModDB / MajorGeeks
+  is an `.exe` installer: don't run it, open it with 7-Zip and take the
+  `.dff`/`.txd` out.
 
-## What's safe
-
-* `.dff`, `.txd`, `.txt`, `.cfg`, `.dat` = data. The game parses them; they
-  cannot execute anything. `.col` files are ignored (VC keeps vehicle
-  collision inside the `.dff`).
-* **Never run** any `.exe` / `.bat` / `.msi` shipped inside a mod ("auto
-  installer", "setup", "trainer"). The installer ignores them and tells you.
-  If a mod is *only* offered as an `.exe` installer, skip it — there is always
-  a plain-zip alternative for the same car.
-* Right-click every downloaded archive → *Scan with Microsoft Defender*.
-* Take mods from the big archives where each file has an author, date,
-  download count and comments: libertycity.net, gtainside.com, gtagarage.com,
-  gtaall.com, modland.net, moddb.com. Prefer files with thousands of
-  downloads and recent positive comments.
-
-## Where to look
-
-* Everything by slot: `https://libertycity.net/files/gta-vice-city/zamena/<slot>.dff/`
-  (e.g. `.../zamena/infernus.dff/` lists 70+ cars made to replace the Infernus).
-* Brand folders: `https://libertycity.net/files/gta-vice-city/vehicles/cars/lamborghini/`
-  (also `ferrari`, `bmw`, `audi`, `mercedes`, `porsche`, `toyota`, ...).
-* GTAInside: `https://www.gtainside.com/en/vicecity/cars/` (filter/search by name).
-* Ready-made full packs (one download replaces most slots — each of these is a
-  zip with `.dff`/`.txd` per slot; unpack and sort into slot folders, or if the
-  files are already named `infernus.dff` etc. just drop the whole thing in one
-  folder):
-  * *NextGen Cars Pack* and other packs: `https://libertycity.net/files/gta-vice-city/vehicles/car-packs/`
-  * *GTA VC: True Vehicle Pack* (ModDB) — real cars but era-correct 1980s, not modern.
-  * *Ultimate Vice City 2.1* (ModDB / MajorGeeks) — the mod you remember (40 real
-    cars, 2000s models). It is an `.exe` installer: do **not** run it; open it
-    with 7-Zip (*right-click → 7-Zip → Open archive*) and pull the `.dff`/`.txd`
-    files out into slot folders instead.
+Pick "lightweight" / "VC style" models over huge Forza conversions; the 2002
+engine crashes on very heavy ones. Priority if you don't want all 64 at once:
+`infernus cheetah banshee stinger comet deluxo sentinel sentxs admiral washing
+landstal rancher patriot bobcat stallion sabretur pheonix blistac taxi police`.
 
 ## Full slot list (64 cars) with modern suggestions
 
