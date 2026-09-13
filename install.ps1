@@ -491,9 +491,19 @@ function Invoke-Restore {
     $Game = Find-GamePath
     $Game = (Resolve-Path -LiteralPath $Game).Path.TrimEnd('\', '/')
     $root = Join-Path $Game '_ultimate_mod_backup'
+    $exe = Join-Path $Game 'gta-vc.exe'
+    $layers = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
     if ($BackupDir) { $dir = $BackupDir }
     else {
-        if (-not (Test-Path -LiteralPath $root)) { throw "No backups found in $root" }
+        if (-not (Test-Path -LiteralPath $root)) {
+            # the game folder was re-extracted: nothing of ours is in it, but the registry flags survive
+            if ($IsWin) {
+                Remove-ItemProperty -Path $layers -Name $exe -ErrorAction SilentlyContinue
+                Write-Ok "no backup folder in $Game (fresh copy) - removed the compatibility flags for $exe, nothing else to undo"
+                return
+            }
+            throw "No backups found in $root"
+        }
         $dir = (Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name | Select-Object -Last 1).FullName
     }
     $mf = Join-Path $dir 'manifest.json'
@@ -575,6 +585,33 @@ function Invoke-Diagnose {
     if (Test-Path -LiteralPath $cleoLog) { Write-Info "cleo.log (last lines):"; Get-Content -LiteralPath $cleoLog -Tail 8 | ForEach-Object { Write-Info "      $_" } }
 
     if (-not $IsWin) { Write-Warn2 "not on Windows - cannot read the event log or launch the game"; return }
+
+    # things that survive deleting and re-extracting the game folder
+    Write-Step "Leftovers outside the game folder"
+    $userFiles = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'GTA Vice City User Files'
+    $set = Join-Path $userFiles 'gta_vc.set'
+    if (Test-Path -LiteralPath $set) {
+        $si = Get-Item -LiteralPath $set
+        Write-Info ("settings file: {0} ({1:N0} bytes, {2}) - a bad one makes the game exit silently; delete it to test (saves are separate files)" -f $set, $si.Length, $si.LastWriteTime)
+    } else { Write-Info "no gta_vc.set in $userFiles (the game has not managed a first run yet, or it was deleted)" }
+    $layers = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+    try {
+        $cf = (Get-ItemProperty -Path $layers -Name $exe -ErrorAction Stop).$exe
+        if ($cf) { Write-Info "compatibility flags on this exe path: $cf  (set by Install.bat or by you; Restore-Backup.bat removes them)" }
+    } catch { Write-Info "no compatibility flags on this exe path" }
+
+    Write-Step "Windows Defender detections touching the game folder"
+    try {
+        $det = Get-MpThreatDetection -ErrorAction Stop | Where-Object { ($_.Resources -join ' ') -match [regex]::Escape($Game) -or ($_.Resources -join ' ') -match 'gta' } | Sort-Object InitialDetectionTime -Descending | Select-Object -First 5
+        if ($det) {
+            foreach ($d in $det) {
+                $t = try { (Get-MpThreat -ThreatID $d.ThreatID -ErrorAction Stop).ThreatName } catch { "threat id $($d.ThreatID)" }
+                Write-Warn2 ("{0}  {1}  action={2}" -f $d.InitialDetectionTime, $t, $d.CurrentThreatExecutionStatusID)
+                foreach ($r in $d.Resources) { Write-Info "      $r" }
+            }
+            Write-Warn2 "Defender removed or blocked file(s) from the game folder. A repack's exe or its bundled dll is usually what gets taken; without it the exe exits at once. Windows Security > Protection history shows the same list."
+        } else { Write-Info "none recorded" }
+    } catch { Write-Info "could not query Defender: $($_.Exception.Message)" }
 
     # Windows' own crash records for this exe
     Write-Step "Windows crash records for gta-vc.exe (last 3)"
