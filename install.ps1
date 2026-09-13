@@ -26,6 +26,10 @@
     Undo: copy the newest backup back and delete the files that were added.
 .PARAMETER BackupDir
     With -Restore: a specific backup folder instead of the newest one.
+.PARAMETER Diagnose
+    The game does not start? Reports Windows' crash record for gta-vc.exe, then
+    launches the game with each installed component switched off in turn and
+    tells you which one is the problem (Diagnose.bat).
 .PARAMETER Yes
     Do not pause for confirmation.
 #>
@@ -39,6 +43,7 @@ param(
     [switch]$NoDownload,
     [switch]$Restore,
     [string]$BackupDir,
+    [switch]$Diagnose,
     [switch]$Yes
 )
 
@@ -526,8 +531,124 @@ function Invoke-Restore {
 }
 
 # ---------------------------------------------------------------------------
+# DIAGNOSE (game does not start)
+# ---------------------------------------------------------------------------
+function Test-GameLaunch([string]$exe, [int]$seconds) {
+    # $true if the game is still running after $seconds (i.e. it reached the menu / loading screen)
+    $p = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -PassThru
+    $alive = $true
+    for ($i = 0; $i -lt $seconds; $i++) {
+        Start-Sleep -Seconds 1
+        $p.Refresh()
+        if ($p.HasExited) { $alive = $false; break }
+    }
+    if ($alive) { try { Stop-Process -Id $p.Id -Force } catch {} ; Start-Sleep -Seconds 2 }
+    else { Write-Info ("      exited after {0}s with code {1}" -f $i, $p.ExitCode) }
+    return $alive
+}
+
+function Invoke-Diagnose {
+    $Game = Find-GamePath
+    $Game = (Resolve-Path -LiteralPath $Game).Path.TrimEnd('\', '/')
+    $exe = Join-Path $Game 'gta-vc.exe'
+    if (-not (Test-Path -LiteralPath $exe)) { throw "gta-vc.exe not found in $Game" }
+    Write-Step "Diagnosing why $exe does not start"
+    Write-Info "Exe version : $(Get-ExeVersion $exe)"
+    $exeItem = Get-Item -LiteralPath $exe
+    Write-Info ("Exe size    : {0:N0} bytes, modified {1}" -f $exeItem.Length, $exeItem.LastWriteTime)
+
+    # components we may have added
+    $components = @(
+        @{ Name = 'ASI loader (dinput8.dll)';    Files = @('dinput8.dll') },
+        @{ Name = 'CLEO (VC.CLEO.asi + scripts)'; Files = @('VC.CLEO.asi') },
+        @{ Name = 'SilentPatch (SilentPatchVC.asi)'; Files = @('SilentPatchVC.asi') },
+        @{ Name = 'mousefix.asi';                Files = @('mousefix.asi') }
+    )
+    $present = @()
+    foreach ($c in $components) {
+        $paths = @($c.Files | ForEach-Object { Join-Path $Game $_ } | Where-Object { Test-Path -LiteralPath $_ })
+        if ($paths.Count -gt 0) { $c.Paths = $paths; $present += $c; Write-Info "installed   : $($c.Name)" }
+    }
+    $others = Get-ChildItem -LiteralPath $Game -File | Where-Object { $_.Extension -in '.asi', '.dll' -and $_.Name -notin 'dinput8.dll','VC.CLEO.asi','SilentPatchVC.asi','mousefix.asi','Mss32.dll','binkw32.dll','eax.dll','vorbis.dll','vorbisFile.dll','ogg.dll' }
+    if ($others) { Write-Info "other plugins/dlls in the folder (not ours): $(($others | ForEach-Object { $_.Name }) -join ', ')" }
+    $cleoLog = Join-Path $Game 'cleo.log'
+    if (Test-Path -LiteralPath $cleoLog) { Write-Info "cleo.log (last lines):"; Get-Content -LiteralPath $cleoLog -Tail 8 | ForEach-Object { Write-Info "      $_" } }
+
+    if (-not $IsWin) { Write-Warn2 "not on Windows - cannot read the event log or launch the game"; return }
+
+    # Windows' own crash records for this exe
+    Write-Step "Windows crash records for gta-vc.exe (last 3)"
+    try {
+        $ev = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Application Error', 'Windows Error Reporting' } -MaxEvents 400 -ErrorAction Stop |
+              Where-Object { $_.Message -match 'gta-vc\.exe' } | Select-Object -First 3
+        if (-not $ev) { Write-Info "none found (the exe exits without crashing - typical for DRM / launcher / a plugin calling exit)" }
+        foreach ($e in $ev) {
+            $mod = [regex]::Match($e.Message, 'Faulting module name:\s*([^,\r\n]+)').Groups[1].Value
+            $code = [regex]::Match($e.Message, 'Exception code:\s*(0x[0-9a-fA-F]+)').Groups[1].Value
+            Write-Info ("{0}  faulting module: {1}  exception: {2}" -f $e.TimeCreated, $(if ($mod) { $mod.Trim() } else { '?' }), $(if ($code) { $code } else { '?' }))
+        }
+    } catch { Write-Info "could not read the event log: $($_.Exception.Message)" }
+
+    # launch tests
+    Write-Step "Launch tests (each one starts the game for up to 25 s and closes it again)"
+    Write-Host "    Do not touch the game window while this runs." -ForegroundColor Yellow
+    $layers = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+    $compat = $null
+    try { $compat = (Get-ItemProperty -Path $layers -Name $exe -ErrorAction Stop).$exe } catch {}
+
+    Write-Info "1. everything as installed..."
+    if (Test-GameLaunch $exe 25) {
+        Write-Ok "the game starts and stays up. If it still does nothing when YOU double-click it, the difference is how it is launched: launch gta-vc.exe directly from the game folder, not from Steam or a repack launcher, and not as a different user."
+        return
+    }
+    $culprit = $null
+    foreach ($c in $present) {
+        Write-Info "-- without $($c.Name)..."
+        foreach ($f in $c.Paths) { Rename-Item -LiteralPath $f -NewName ([System.IO.Path]::GetFileName($f) + '.off') -Force }
+        $ok = Test-GameLaunch $exe 25
+        foreach ($f in $c.Paths) { Rename-Item -LiteralPath "$f.off" -NewName ([System.IO.Path]::GetFileName($f)) -Force }
+        if ($ok) { $culprit = $c; break }
+    }
+    if (-not $culprit -and $compat) {
+        Write-Info "-- without the compatibility flags..."
+        Remove-ItemProperty -Path $layers -Name $exe -ErrorAction SilentlyContinue
+        $ok = Test-GameLaunch $exe 25
+        Set-ItemProperty -Path $layers -Name $exe -Value $compat
+        if ($ok) { $culprit = @{ Name = 'compatibility flags'; Paths = @() } }
+    }
+    if (-not $culprit -and $present.Count -gt 0) {
+        Write-Info "-- without ALL of our components..."
+        foreach ($c in $present) { foreach ($f in $c.Paths) { Rename-Item -LiteralPath $f -NewName ([System.IO.Path]::GetFileName($f) + '.off') -Force } }
+        if ($compat) { Remove-ItemProperty -Path $layers -Name $exe -ErrorAction SilentlyContinue }
+        $ok = Test-GameLaunch $exe 25
+        foreach ($c in $present) { foreach ($f in $c.Paths) { Rename-Item -LiteralPath "$f.off" -NewName ([System.IO.Path]::GetFileName($f)) -Force } }
+        if ($compat) { Set-ItemProperty -Path $layers -Name $exe -Value $compat }
+        if (-not $ok) {
+            Write-Warn2 "The game does not start even with everything of ours removed - the problem is the game copy itself (Steam DRM exe started outside Steam, a repack launcher, a missing gta_vc.set, or Defender). Run Restore-Backup.bat, then get that copy starting on its own first."
+            return
+        }
+        $culprit = @{ Name = 'a combination of components'; Paths = @() }
+    }
+
+    Write-Step "Result"
+    if ($culprit.Paths.Count -gt 0) {
+        foreach ($f in $culprit.Paths) { Rename-Item -LiteralPath $f -NewName ([System.IO.Path]::GetFileName($f) + '.off') -Force }
+        Write-Warn2 "$($culprit.Name) stops the game from starting. It has been switched OFF (renamed to .off) so the game runs; the rest stays on."
+        if ($culprit.Name -like 'ASI loader*') { Write-Info "Without the ASI loader no plugin loads. Try the other loader name: rename dinput8.dll.off to ddraw.dll and start the game." }
+        if ($culprit.Name -like 'CLEO*') { Write-Info "CLEO refused this exe (version '$(Get-ExeVersion $exe)'). The cheats need a clean 1.0 / 1.1 / Steam gta-vc.exe." }
+        if ($culprit.Name -like 'SilentPatch*') { Write-Info "SilentPatch does not accept this exe build. Cheats and cars work without it; the mouse fix then relies on the compatibility flags only." }
+    } elseif ($culprit.Name -eq 'compatibility flags') {
+        Remove-ItemProperty -Path $layers -Name $exe -ErrorAction SilentlyContinue
+        Write-Warn2 "The compatibility flags stop the game from starting; they have been removed."
+    } else {
+        Write-Warn2 "No single component is at fault but all together they are. Run Restore-Backup.bat and re-run Install.bat with -SkipSilentPatch, then again without it, to narrow it down."
+    }
+}
+
+# ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
+if ($Diagnose) { Invoke-Diagnose; exit 0 }
 if ($Restore) { Invoke-Restore; exit 0 }
 
 Write-Host "GTA Vice City - Ultimate mod installer" -ForegroundColor Magenta

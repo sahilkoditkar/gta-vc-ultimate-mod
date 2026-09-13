@@ -96,6 +96,7 @@ Vice City only looks for controllers at launch.
 
 | | |
 |---|---|
+| Game does not start at all after installing | run **`Diagnose.bat`**: it shows Windows' crash record for `gta-vc.exe`, then starts the game with each component switched off in turn and switches off the one that breaks it |
 | No `CLEO 2.2.0` text in the menu | rename `dinput8.dll` to `ddraw.dll` in the game folder |
 | Installer says exe version *unknown* | your copy has a patched exe; CLEO may still load, otherwise use a clean 1.0/1.1/Steam copy |
 | Crash on loading after adding a car | that model is broken/too heavy: delete its zip from `cars\`, run `Restore-Backup.bat`, then `Install.bat` |
