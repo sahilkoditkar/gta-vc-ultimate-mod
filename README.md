@@ -18,9 +18,13 @@ that gets changed is backed up first; `Restore-Backup.bat` undoes everything.
 
 1. Green **Code** button → **Download ZIP** → extract anywhere.
 2. Double-click **`Install.bat`**. Windows may warn that the file came from the
-   internet: *More info → Run anyway*. It finds the game folder by itself
-   (asks you to paste the path if it can't), asks once for admin rights if the
-   game is under Program Files, and prints a summary.
+   internet: *More info → Run anyway*. It finds the game folder by itself:
+   Steam libraries, Program Files, and a search of Desktop / Downloads /
+   Documents / every drive a few levels deep (a `Games` folder on the Desktop
+   is fine). It remembers the result in `gamepath.txt`. Only if nothing is
+   found does it ask you to drag the game folder onto the window. It asks
+   once for admin rights if the game is under Program Files, then prints a
+   summary.
 3. Start the game. **`CLEO 2.2.0`** in the bottom-left of the menu means it
    worked. Load a save: money is $99,999,999 and Tommy can't be hurt.
 

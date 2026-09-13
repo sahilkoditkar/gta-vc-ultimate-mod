@@ -1,3 +1,4 @@
 # hash-verified upstream zips are cached here by the installer
 downloads/
 __pycache__/
+gamepath.txt

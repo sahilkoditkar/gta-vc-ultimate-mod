@@ -167,32 +167,83 @@ function Expand-ToTemp([string]$archive) {
 # ---------------------------------------------------------------------------
 function Find-GamePath {
     if ($GamePath) { return $GamePath }
+    $exeName = 'gta-vc.exe'
+
+    # 0. remembered from a previous run
+    $remember = Join-Path $ScriptRoot 'gamepath.txt'
+    if (Test-Path -LiteralPath $remember) {
+        $p = (Get-Content -LiteralPath $remember -Raw).Trim()
+        if ($p -and (Test-Path -LiteralPath (Join-Path $p $exeName))) { return $p }
+    }
+
+    # 1. this folder placed inside (or next to) the game folder
+    $d = $ScriptRoot
+    while ($d) {
+        if (Test-Path -LiteralPath (Join-Path $d $exeName)) { return $d }
+        $parent = Split-Path -Parent $d
+        if (-not $parent -or $parent -eq $d) { break }
+        $d = $parent
+    }
+
     $candidates = @()
+    $roots = @()
     if ($IsWin) {
+        # 2. Steam: main install + every extra library folder
         foreach ($key in 'HKCU:\Software\Valve\Steam', 'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam') {
             try {
-                $p = (Get-ItemProperty -Path $key -ErrorAction Stop).InstallPath
-                if ($p) { $candidates += (Join-Path $p 'steamapps\common\Grand Theft Auto Vice City') }
+                $sp = (Get-ItemProperty -Path $key -ErrorAction Stop).InstallPath
+                if ($sp) {
+                    $candidates += (Join-Path $sp 'steamapps\common\Grand Theft Auto Vice City')
+                    $vdf = Join-Path $sp 'steamapps\libraryfolders.vdf'
+                    if (Test-Path -LiteralPath $vdf) {
+                        foreach ($m in [regex]::Matches((Get-Content -LiteralPath $vdf -Raw), '"path"\s+"([^"]+)"')) {
+                            $candidates += (Join-Path ($m.Groups[1].Value -replace '\\\\', '\') 'steamapps\common\Grand Theft Auto Vice City')
+                        }
+                    }
+                }
             } catch {}
         }
         try {
-            $p = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\WOW6432Node\Rockstar Games\Grand Theft Auto Vice City' -ErrorAction Stop).InstallFolder
-            if ($p) { $candidates += $p }
+            $rp = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\WOW6432Node\Rockstar Games\Grand Theft Auto Vice City' -ErrorAction Stop).InstallFolder
+            if ($rp) { $candidates += $rp }
         } catch {}
+        # 3. usual fixed spots
         $candidates += @(
             'C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto Vice City',
             'C:\Program Files (x86)\Rockstar Games\Grand Theft Auto Vice City',
-            'C:\Program Files\Rockstar Games\Grand Theft Auto Vice City',
-            'C:\Games\Grand Theft Auto Vice City',
-            'D:\Games\Grand Theft Auto Vice City'
+            'C:\Program Files\Rockstar Games\Grand Theft Auto Vice City'
         )
+        # 4. places to search a few levels deep
+        $up = $env:USERPROFILE
+        if ($up) {
+            foreach ($sub in 'Desktop', 'Downloads', 'Documents', 'Games', 'OneDrive\Desktop', 'OneDrive\Documents') {
+                $roots += @{ Path = (Join-Path $up $sub); Depth = 3 }
+            }
+        }
+        foreach ($drv in (Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' })) {
+            $roots += @{ Path = $drv.Root; Depth = 2 }
+            foreach ($sub in 'Games', 'Program Files (x86)', 'Program Files', 'SteamLibrary\steamapps\common', 'Steam\steamapps\common', 'Rockstar Games') {
+                $roots += @{ Path = (Join-Path $drv.Root $sub); Depth = 2 }
+            }
+        }
+    } else {
+        if ($HOME) { $roots += @{ Path = $HOME; Depth = 4 } }
     }
     foreach ($c in $candidates) {
-        if ($c -and (Test-Path -LiteralPath (Join-Path $c 'gta-vc.exe'))) { return $c }
+        if ($c -and (Test-Path -LiteralPath (Join-Path $c $exeName))) { return $c }
     }
+    Write-Info "searching your drives for $exeName (a few seconds)..."
+    foreach ($r in $roots) {
+        if (-not (Test-Path -LiteralPath $r.Path)) { continue }
+        $hit = Get-ChildItem -LiteralPath $r.Path -Filter $exeName -File -Recurse -Depth $r.Depth -ErrorAction SilentlyContinue -Force |
+               Where-Object { $_.FullName -notmatch '\\_ultimate_mod_backup\\' } | Select-Object -First 1
+        if ($hit) { return $hit.DirectoryName }
+    }
+
     if ($Yes) { throw "Game folder not found. Run again with -GamePath 'C:\path\to\Grand Theft Auto Vice City'." }
     Write-Host ""
-    $p = Read-Host "Could not auto-detect the game. Paste the full path of the folder that contains gta-vc.exe"
+    Write-Host "Could not find $exeName anywhere. Drag the game folder onto this window (or paste its path) and press Enter:" -ForegroundColor Yellow
+    $p = Read-Host "Game folder"
     return $p.Trim('"').Trim()
 }
 
@@ -485,6 +536,7 @@ Write-Host "--------------------------------------"
 $Game = Find-GamePath
 if (-not (Test-Path -LiteralPath (Join-Path $Game 'gta-vc.exe'))) { throw "gta-vc.exe not found in '$Game'" }
 $Game = (Resolve-Path -LiteralPath $Game).Path.TrimEnd('\', '/')
+try { Set-Content -LiteralPath (Join-Path $ScriptRoot 'gamepath.txt') -Value $Game -Encoding UTF8 } catch {}
 $Exe  = Join-Path $Game 'gta-vc.exe'
 $ExeVersion = Get-ExeVersion $Exe
 
