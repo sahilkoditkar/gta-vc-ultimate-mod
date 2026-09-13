@@ -94,6 +94,12 @@ Vice City only looks for controllers at launch.
   `joy.cpl` (Win+R), and if you launch through Steam disable *Steam Input*
   for the game.
 
+## More
+
+`OPTIONS.md` lists everything else that can be added (more cheats, widescreen
+fix, draw distance, PS2 graphics, HD textures, weapons, skins, saves) with a
+one-line verdict on each.
+
 ## Undo
 
 `Restore-Backup.bat` puts every changed file back and deletes the added ones.
