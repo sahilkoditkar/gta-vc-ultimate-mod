@@ -119,6 +119,10 @@ SET_CAR_HEALTH = 0x0224
 GET_CHAR_HEALTH = 0x0226
 IS_PLAYER_PLAYING = 0x0256         # player defined (alive, not busted)
 SET_CHAR_PROOFS = 0x02AB           # actor immunities BP FP EP CP MP
+SET_CHAR_CANT_BE_DRAGGED_OUT = 0x039E   # nobody can pull the actor off / out of a vehicle
+SET_CAR_CAN_BE_DAMAGED = 0x03F5    # 0 = CBike::VehicleDamage returns early -> no collision knock-off
+IS_PLAYER_ON_ANY_BIKE = 0x047E
+SET_CAN_BURST_CAR_TYRES = 0x053F   # 0 = no burst -> no CBike::BurstTyre knock-off
 SET_CAR_PROOFS = 0x02AC            # car immunities  BP FP EP CP MP
 ADD_ARMOUR_TO_CHAR = 0x035F
 STORE_CAR_CHAR_IS_IN_NO_SAVE = 0x03C0
@@ -199,7 +203,50 @@ def build_infinite_money():
     return a
 
 
+def build_no_bike_fall():
+    """
+    Never get knocked off a bike. In the game code a rider is thrown off in
+    CBike::VehicleDamage (skipped entirely when the bike can't be damaged),
+    CBike::BurstTyre (never runs when tyres can't burst) and when a ped drags
+    the rider off (blocked by 'can't be dragged out'). All three are flipped
+    while the player is on a bike and flipped back when he gets off.
+    """
+    a = Asm()
+    a.op(SET_LVAR_INT, lv(1), 0)                 # 1@ = 0  (flags applied?)  -- keeps LOOP off offset 0
+    a.label("LOOP")
+    a.op(WAIT, 0)
+    a.op(IF, 0)
+    a.op(IS_PLAYER_PLAYING, PLAYER_CHAR)
+    a.op(GOTO_IF_FALSE, lbl("LOOP"))
+    a.op(IF, 0)
+    a.op(IS_PLAYER_ON_ANY_BIKE, PLAYER_CHAR)
+    a.op(GOTO_IF_FALSE, lbl("NOT_ON_BIKE"))
+    a.op(STORE_CAR_CHAR_IS_IN_NO_SAVE, PLAYER_ACTOR, lv(0))   # 0@ = bike
+    a.op(SET_CAR_CAN_BE_DAMAGED, lv(0), 0)
+    a.op(SET_CAN_BURST_CAR_TYRES, lv(0), 0)
+    a.op(SET_CHAR_CANT_BE_DRAGGED_OUT, PLAYER_ACTOR, 1)
+    a.op(SET_LVAR_INT, lv(1), 1)
+    a.op(GOTO, lbl("LOOP"))
+
+    a.label("NOT_ON_BIKE")
+    a.op(IF, 0)
+    a.op(IS_INT_LVAR_EQUAL, lv(1), 1)
+    a.op(GOTO_IF_FALSE, lbl("LOOP"))
+    a.op(SET_CHAR_CANT_BE_DRAGGED_OUT, PLAYER_ACTOR, 0)
+    a.op(SET_LVAR_INT, lv(1), 0)
+    a.op(IF, 0)
+    a.op(IS_CAR_DEAD, lv(0))                     # bike gone -> nothing to undo
+    a.op(GOTO_IF_FALSE, lbl("UNDO"))
+    a.op(GOTO, lbl("LOOP"))
+    a.label("UNDO")
+    a.op(SET_CAR_CAN_BE_DAMAGED, lv(0), 1)
+    a.op(SET_CAN_BURST_CAR_TYRES, lv(0), 1)
+    a.op(GOTO, lbl("LOOP"))
+    return a
+
+
 SCRIPTS = {
+    "no_bike_fall.cs": build_no_bike_fall,
     "infinite_health.cs": build_infinite_health,
     "infinite_money.cs": build_infinite_money,
 }

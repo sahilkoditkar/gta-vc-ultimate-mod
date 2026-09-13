@@ -4,6 +4,7 @@ One installer for the classic PC Vice City (Steam / retail, Windows 10/11):
 
 * **infinite health** (nothing can hurt you, your car can't blow up)
 * **infinite money** ($99,999,999, always refilled)
+* **never fall off a bike** (crashes, burst tyres and cops pulling you off)
 * **modern cars** – every car in `cars\` replaces an old one
 * **Windows 11 mouse fix**
 * crash fixes (SilentPatch) and EvoFox controller notes
@@ -37,7 +38,7 @@ steps are skipped.
 |---|---|---|
 | ASI loader | `dinput8.dll` | Ultimate ASI Loader v9.7.4 |
 | CLEO | `VC.CLEO.asi`, `CLEO\` | cleolibrary III.VC.CLEO v2.2.0 |
-| Cheats | `CLEO\infinite_health.cs`, `CLEO\infinite_money.cs` | this repo (source: `tools\cleo_asm.py`) |
+| Cheats | `CLEO\infinite_health.cs`, `CLEO\infinite_money.cs`, `CLEO\no_bike_fall.cs` | this repo (source: `tools\cleo_asm.py`) |
 | SilentPatch | `SilentPatchVC.asi` + fixed `data\maps\*.ipl` | CookiePLMonster/SilentPatch build 12.1 |
 | Mouse | compatibility flags on `gta-vc.exe` (registry) | – |
 | Cars | old model + textures replaced inside `models\gta3.img`, matching `handling.cfg` / `carcols.dat` lines swapped, old data compacted away | `cars\` |
