@@ -1,0 +1,9 @@
+# downloaded (hash-verified) upstream zips are cached here by install.ps1
+downloads/
+# your own car mods - keep them local
+cars/*/
+cars/*.zip
+!cars/README.md
+optional/*/
+!optional/README.md
+__pycache__/
