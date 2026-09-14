@@ -46,7 +46,8 @@ foreach ($a in (Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Exten
     $dest = Join-Path $here ($a.BaseName + '.zip')
     $stage = Join-Path $here ($a.BaseName + '.clean.zip')   # Compress-Archive only accepts a .zip name
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Force }
-    Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $stage -CompressionLevel Optimal
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::CreateFromDirectory($tmp, $stage, [IO.Compression.CompressionLevel]::Optimal, $false)
     Remove-Item -LiteralPath $tmp -Recurse -Force
     $origLen = $a.Length
     Remove-Item -LiteralPath $a.FullName -Force            # the original (.zip/.rar/.7z) is replaced by the clean .zip
