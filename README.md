@@ -77,23 +77,21 @@ and installs it through winget if it isn't there. The installer takes the
 The full slot list, modern-car suggestions and download links are in
 **`cars\README.md`**.
 
-**Cleaning what you downloaded** (optional): `cars\Clean-Cars.bat` writes a
-data-only `.zip` copy of every archive in `cars\` into `cars\clean\` (the
-auto-installer `.exe`s and screenshots mod sites bundle are dropped and
-listed; originals are untouched). The installer would ignore those files
-anyway; this is for what you upload.
+**Cleaning and sharing** (optional): `cars\Clean-Cars.bat` writes a data-only
+`.zip` copy of every archive in `cars\` into `cars\clean\` (auto-installer
+`.exe`s and screenshots dropped and listed, originals untouched) and lists them
+with their SHA256 in `cars.json`. Upload `cars\clean\*.zip` to the GitHub
+release named at the top of `install.ps1` (`$CarsRelease`, currently the
+`cars_v1` release of this repo) and commit `cars.json`. From then on
+`Install.bat` downloads and hash-checks them wherever it runs. To force which
+vehicle an archive replaces, add `"slot": "infernus"` to its entry in
+`cars.json` (used when the files inside aren't named after a vehicle, or to
+move a car to another slot). Private repo? Save a fine-grained token with read
+access to *Contents* as `github_token.txt` next to `Install.bat`.
 
-**Sharing the cars** (optional): they are too big for git, so they go on a
-GitHub release. Run `cars\Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars`
-(cleans and writes `cars.json` with name, URL, SHA256), then on GitHub:
-Releases → *Draft a new release* → tag `cars` → drag the `.zip` files from
-`cars\clean\` in → Publish → commit `cars.json`. Private repo? Save a fine-grained
-token with read access to *Contents* as `github_token.txt` next to
-`Install.bat` (never committed).
-
-`Install.bat` installs what's in `cars\` **and** what `cars.json` lists
-(downloaded and hash-checked; a local copy of the same name wins). Change that
-with `-Cars local`, `-Cars release` or `-Cars none` on the line in `Install.bat`.
+`Install.bat` installs what's in `cars\` **and** what `cars.json` lists (a
+local copy of the same name wins). Change that with `-Cars local`,
+`-Cars release` or `-Cars none` on the line in `Install.bat`.
 
 ## Linux (Bottles / Wine / Proton)
 

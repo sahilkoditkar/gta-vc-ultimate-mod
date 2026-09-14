@@ -18,11 +18,10 @@ only replace what's in it. Fill the slots below and the whole city is modern.
 
 Optional: `Clean-Cars.bat` writes a data-only `.zip` copy of every archive
 here into `clean\` (drops the `.exe` installers and screenshots; originals
-stay; the installer ignores those files anyway). Give it a release URL,
-`Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars`, and it
-also writes `..\cars.json`; upload `clean\*.zip` to a GitHub release tagged
-`cars`, commit `cars.json`, and `Install.bat` downloads them (SHA256-checked)
-wherever it runs.
+stay) and updates `..\cars.json` with their SHA256. Upload `clean\*.zip` to
+the GitHub release named in `install.ps1` and commit `cars.json`;
+`Install.bat` then downloads them (hash-checked) wherever it runs. An archive
+whose files are not named after a vehicle gets `"slot": "..."` in `cars.json`.
 
 Only `.dff` / `.txd` / `.txt` are used – they are data and can't run code.
 Any `.exe` / `.bat` inside a mod is ignored and reported; never run one.

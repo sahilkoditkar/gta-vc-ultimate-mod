@@ -3,18 +3,18 @@
 
     For every .zip/.rar/.7z here it keeps only the data files
     (.dff .txd .txt .cfg .dat .ini .nfo), drops auto-installer .exe/.bat files,
-    screenshots and anything else, and writes the result as clean\<name>.zip.
+    screenshots and anything else, writes the result as clean\<name>.zip and
+    lists the clean files with their SHA256 in ..\cars.json.
     The originals here are not touched.
 
-    Usage:  Clean-Cars.bat
-            Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars
-              -> additionally writes ..\cars.json (name, URL, SHA256) so that
-                 Install.bat can download the files in clean\ from that release.
+    Usage: double-click Clean-Cars.bat, then upload clean\*.zip to the GitHub
+    release named in install.ps1 ($CarsRelease) and commit cars.json.
+    To pin an archive to a vehicle, add  "slot": "infernus"  to its entry in
+    cars.json (kept on re-runs).
 
     Not needed for a normal install: Install.bat only ever copies .dff/.txd
     and text files out of an archive and ignores everything else anyway.
 #>
-param([string]$ReleaseUrl)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $clean = Join-Path $here 'clean'
@@ -33,6 +33,11 @@ function Expand-Any([string]$archive, [string]$dest) {
     if ($LASTEXITCODE -ne 0) { throw "7-Zip could not open it (exit $LASTEXITCODE)" }
 }
 
+$manifest = Join-Path (Split-Path -Parent $here) 'cars.json'
+$oldSlots = @{}
+if (Test-Path -LiteralPath $manifest) {
+    try { foreach ($e in @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)) { if ($e.name -and $e.slot) { $oldSlots[$e.name] = $e.slot } } } catch {}
+}
 $items = @()
 foreach ($a in (Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Extension -in '.zip', '.rar', '.7z' } | Sort-Object Name)) {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("carclean_" + [guid]::NewGuid().ToString('N'))
@@ -52,18 +57,14 @@ foreach ($a in (Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Exten
     Remove-Item -LiteralPath $tmp -Recurse -Force
     $origLen = $a.Length
     $d = Get-Item -LiteralPath $dest
-    $items += [ordered]@{ name = $d.Name; url = (("$ReleaseUrl").TrimEnd('/') + '/' + [Uri]::EscapeDataString($d.Name)); sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash.ToUpperInvariant() }
+    $entry = [ordered]@{ name = $d.Name; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash.ToUpperInvariant() }
+    if ($oldSlots.ContainsKey($d.Name)) { $entry.slot = $oldSlots[$d.Name] }
+    $items += $entry
     Write-Host ("[ok] {0,-20} {1,7:N2} MB -> {2,7:N2} MB  {3,-14} kept {4}, dropped {5}" -f $a.Name, ($origLen / 1MB), ($d.Length / 1MB), ("-> clean\" + $d.Name), $kept.Count, $removed.Count) -ForegroundColor Green
     foreach ($r in ($removed | Where-Object { $_.Extension -in '.exe', '.bat', '.cmd', '.msi', '.scr', '.vbs', '.dll', '.com' })) { Write-Host "      dropped executable: $($r.Name)" -ForegroundColor DarkYellow }
 }
 if ($items.Count -eq 0) { Write-Host "no car archives found in $here"; exit }
+ConvertTo-Json @($items) -Depth 3 | Set-Content -LiteralPath $manifest -Encoding UTF8
 Write-Host ""
-Write-Host "[ok] $($items.Count) clean data-only .zip file(s) written to $clean (originals untouched)." -ForegroundColor Green
-if ($ReleaseUrl) {
-    $manifest = Join-Path (Split-Path -Parent $here) 'cars.json'
-    ConvertTo-Json @($items) -Depth 3 | Set-Content -LiteralPath $manifest -Encoding UTF8
-    Write-Host "[ok] wrote $manifest" -ForegroundColor Green
-    Write-Host "Next: upload the .zip files from  $clean  to the release at  $ReleaseUrl  and commit cars.json." -ForegroundColor Yellow
-} else {
-    Write-Host "To also write cars.json for a GitHub release, run again with the release URL as argument." -ForegroundColor Yellow
-}
+Write-Host "[ok] $($items.Count) clean data-only .zip file(s) in $clean (originals untouched); cars.json updated." -ForegroundColor Green
+Write-Host "Next: upload the files in clean\ to the GitHub release named in install.ps1 and commit cars.json." -ForegroundColor Yellow

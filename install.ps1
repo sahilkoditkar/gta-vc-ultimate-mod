@@ -38,7 +38,8 @@
     tells you which one is the problem (Diagnose.bat).
 .PARAMETER Cars
     Where car mods come from: both (default) = archives/folders in cars\ plus the
-    ones listed in cars.json (downloaded from the GitHub release, hash-checked);
+    ones listed in cars.json (downloaded from the GitHub release named by
+    $CarsRelease at the top of this file, hash-checked);
     local = only cars\; release = only cars.json; none = leave cars alone.
 .PARAMETER Yes
     Do not pause for confirmation.
@@ -120,6 +121,10 @@ $Packages = @{
     }
 }
 
+# Where the car archives live (GitHub release). cars.json lists name + sha256
+# (+ optional "slot" to force which vehicle an archive replaces).
+$CarsRelease = 'https://github.com/sahilkoditkar/gta-vc-ultimate-mod/releases/download/cars_v1'
+
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
@@ -193,6 +198,8 @@ function Invoke-Download([string]$url, [string]$outFile) {
     }
 }
 
+$script:SlotOverride = @{}
+
 function Get-RemoteCars {
     # cars.json: [ { "name": "infernus.rar", "url": "...", "sha256": "..." }, ... ]
     # Downloads each (hash-checked) into downloads\cars\ and returns the local paths.
@@ -203,7 +210,9 @@ function Get-RemoteCars {
     $dir = Join-Path (Join-Path $ScriptRoot 'downloads') 'cars'
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     foreach ($e in @($list)) {
-        if (-not $e.name -or -not $e.url) { continue }
+        if (-not $e.name) { continue }
+        $url = if ($e.url) { $e.url } else { $CarsRelease.TrimEnd('/') + '/' + [Uri]::EscapeDataString($e.name) }
+        if ($e.slot) { $script:SlotOverride[$e.name] = ([string]$e.slot).ToLowerInvariant() }
         $local = Join-Path $dir $e.name
         $sha = if ($e.sha256) { ([string]$e.sha256).ToUpperInvariant() } else { $null }
         if (Test-Path -LiteralPath $local) {
@@ -213,7 +222,7 @@ function Get-RemoteCars {
         if ($NoDownload) { Write-Warn2 "$($e.name): not downloaded (-NoDownload)"; continue }
         Write-Info "downloading $($e.name)"
         try {
-            Invoke-Download $e.url "$local.part"
+            Invoke-Download $url "$local.part"
             if ($sha -and (Get-Sha256 "$local.part") -ne $sha) { Remove-Item -LiteralPath "$local.part" -Force; Write-Warn2 "$($e.name): SHA256 mismatch - skipped"; continue }
             Move-Item -LiteralPath "$local.part" -Destination $local -Force
             $out += $local
@@ -1076,10 +1085,12 @@ else {
             # folder/zip named after a game vehicle ("infernus", "cheetah", ...) = slot mode:
             # whatever the files inside are called, they replace that vehicle.
             $slotKey = ($src.BaseName -replace '[^A-Za-z0-9]', '').ToLowerInvariant()
+            if ($script:SlotOverride.ContainsKey($src.Name)) { $slotKey = $script:SlotOverride[$src.Name] }   # "slot" from cars.json
             $slot = $null
             if ($slots.ContainsKey($slotKey)) { $slot = $slots[$slotKey] }
             if ($slot) { Write-Info "-- $($src.Name)  (replaces vehicle '$($slot.Model)')" } else { Write-Info "-- $($src.Name)" }
-            $models = Get-ChildItem -LiteralPath $folder -Recurse -File | Where-Object { $_.Extension -in '.dff', '.txd' }
+            # deepest first so that when a mod ships variants in sub-folders ("Italy Plate\", "PJ only\") the main one in the root wins
+            $models = @(Get-ChildItem -LiteralPath $folder -Recurse -File | Where-Object { $_.Extension -in '.dff', '.txd' } | Sort-Object { ($_.FullName -split '[\\/]').Count } -Descending)
             foreach ($m in $models) {
                 $target = $m.Name
                 if ($slot) {
