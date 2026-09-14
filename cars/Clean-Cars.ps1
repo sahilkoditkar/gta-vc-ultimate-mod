@@ -1,15 +1,15 @@
 <#
-    Clean-Cars.ps1  -  cleans the car archives in this folder IN PLACE.
+    Clean-Cars.ps1  -  makes clean copies of the car archives in this folder.
 
     For every .zip/.rar/.7z here it keeps only the data files
     (.dff .txd .txt .cfg .dat .ini .nfo), drops auto-installer .exe/.bat files,
-    screenshots and anything else, and replaces the archive with a clean
-    <name>.zip (a .rar/.7z becomes a .zip; the original is deleted).
+    screenshots and anything else, and writes the result as clean\<name>.zip.
+    The originals here are not touched.
 
     Usage:  Clean-Cars.bat
             Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars
               -> additionally writes ..\cars.json (name, URL, SHA256) so that
-                 Install.bat can download the same files from that release.
+                 Install.bat can download the files in clean\ from that release.
 
     Not needed for a normal install: Install.bat only ever copies .dff/.txd
     and text files out of an archive and ignores everything else anyway.
@@ -17,6 +17,8 @@
 param([string]$ReleaseUrl)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$clean = Join-Path $here 'clean'
+New-Item -ItemType Directory -Path $clean -Force | Out-Null
 $keep = '.dff', '.txd', '.txt', '.cfg', '.dat', '.ini', '.nfo'
 
 $sz = $null
@@ -43,28 +45,25 @@ foreach ($a in (Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Exten
         Write-Host "[!!] $($a.Name): no .dff/.txd inside - not a car mod, skipped" -ForegroundColor Yellow
         Remove-Item -LiteralPath $tmp -Recurse -Force; continue
     }
-    $dest = Join-Path $here ($a.BaseName + '.zip')
-    $stage = Join-Path $here ($a.BaseName + '.clean.zip')   # Compress-Archive only accepts a .zip name
-    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Force }
+    $dest = Join-Path $clean ($a.BaseName + '.zip')
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [IO.Compression.ZipFile]::CreateFromDirectory($tmp, $stage, [IO.Compression.CompressionLevel]::Optimal, $false)
+    [IO.Compression.ZipFile]::CreateFromDirectory($tmp, $dest, [IO.Compression.CompressionLevel]::Optimal, $false)
     Remove-Item -LiteralPath $tmp -Recurse -Force
     $origLen = $a.Length
-    Remove-Item -LiteralPath $a.FullName -Force            # the original (.zip/.rar/.7z) is replaced by the clean .zip
-    Move-Item -LiteralPath $stage -Destination $dest -Force
     $d = Get-Item -LiteralPath $dest
     $items += [ordered]@{ name = $d.Name; url = (("$ReleaseUrl").TrimEnd('/') + '/' + [Uri]::EscapeDataString($d.Name)); sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash.ToUpperInvariant() }
-    Write-Host ("[ok] {0,-20} {1,7:N2} MB -> {2,7:N2} MB  {3,-14} kept {4}, dropped {5}" -f $a.Name, ($origLen / 1MB), ($d.Length / 1MB), ("-> " + $d.Name), $kept.Count, $removed.Count) -ForegroundColor Green
+    Write-Host ("[ok] {0,-20} {1,7:N2} MB -> {2,7:N2} MB  {3,-14} kept {4}, dropped {5}" -f $a.Name, ($origLen / 1MB), ($d.Length / 1MB), ("-> clean\\" + $d.Name), $kept.Count, $removed.Count) -ForegroundColor Green
     foreach ($r in ($removed | Where-Object { $_.Extension -in '.exe', '.bat', '.cmd', '.msi', '.scr', '.vbs', '.dll', '.com' })) { Write-Host "      dropped executable: $($r.Name)" -ForegroundColor DarkYellow }
 }
 if ($items.Count -eq 0) { Write-Host "no car archives found in $here"; exit }
 Write-Host ""
-Write-Host "[ok] $($items.Count) archive(s) in $here are now data-only .zip files." -ForegroundColor Green
+Write-Host "[ok] $($items.Count) clean data-only .zip file(s) written to $clean (originals untouched)." -ForegroundColor Green
 if ($ReleaseUrl) {
     $manifest = Join-Path (Split-Path -Parent $here) 'cars.json'
     ConvertTo-Json @($items) -Depth 3 | Set-Content -LiteralPath $manifest -Encoding UTF8
     Write-Host "[ok] wrote $manifest" -ForegroundColor Green
-    Write-Host "Next: upload the .zip files from this folder to the release at  $ReleaseUrl  and commit cars.json." -ForegroundColor Yellow
+    Write-Host "Next: upload the .zip files from  $clean  to the release at  $ReleaseUrl  and commit cars.json." -ForegroundColor Yellow
 } else {
     Write-Host "To also write cars.json for a GitHub release, run again with the release URL as argument." -ForegroundColor Yellow
 }

@@ -16,13 +16,13 @@ only replace what's in it. Fill the slots below and the whole city is modern.
    model over the old car in `gta3.img`, applies the handling / carcols lines
    the mod ships, removes the old car's data.
 
-Optional: `Clean-Cars.bat` replaces every archive here with a data-only
-`.zip` (drops the `.exe` installers and screenshots; the installer ignores
-them anyway). Give it a release URL,
+Optional: `Clean-Cars.bat` writes a data-only `.zip` copy of every archive
+here into `clean\` (drops the `.exe` installers and screenshots; originals
+stay; the installer ignores those files anyway). Give it a release URL,
 `Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars`, and it
-also writes `..\cars.json`; upload the cleaned `.zip`s to a GitHub release
-tagged `cars`, commit `cars.json`, and `Install.bat` downloads them
-(SHA256-checked) wherever it runs.
+also writes `..\cars.json`; upload `clean\*.zip` to a GitHub release tagged
+`cars`, commit `cars.json`, and `Install.bat` downloads them (SHA256-checked)
+wherever it runs.
 
 Only `.dff` / `.txd` / `.txt` are used – they are data and can't run code.
 Any `.exe` / `.bat` inside a mod is ignored and reported; never run one.

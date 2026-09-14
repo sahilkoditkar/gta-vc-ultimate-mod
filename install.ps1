@@ -1038,7 +1038,7 @@ else {
     $carcols  = Join-Path $Game 'data\carcols.dat'
     $sources = @()
     if ($Cars -in 'both', 'local' -and (Test-Path -LiteralPath $carsRoot)) {
-        $sources += Get-ChildItem -LiteralPath $carsRoot -Directory | Where-Object { $_.Name -ne 'publish' }
+        $sources += Get-ChildItem -LiteralPath $carsRoot -Directory | Where-Object { $_.Name -notin 'clean', 'publish' }
         $sources += Get-ChildItem -LiteralPath $carsRoot -File | Where-Object { $_.Extension -in '.zip', '.rar', '.7z' }
     }
     if ($Cars -in 'both', 'release') {
