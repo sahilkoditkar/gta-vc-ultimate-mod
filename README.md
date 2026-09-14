@@ -77,19 +77,18 @@ and installs it through winget if it isn't there. The installer takes the
 The full slot list, modern-car suggestions and download links are in
 **`cars\README.md`**.
 
-Car archives are too big for git, so to install them on another machine they
-go on a **GitHub release** instead (optional, only when you want that):
+**Cleaning what you downloaded** (optional): `cars\Clean-Cars.bat` replaces
+every archive in `cars\` with a data-only `.zip` (the auto-installer `.exe`s
+and screenshots mod sites bundle are dropped and listed). The installer would
+ignore them anyway; this is for keeping your own copies clean.
 
-1. With the archives in `cars\`, run
-   `cars\Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars`.
-   It re-packs each one with only the data files (installer `.exe`s and
-   screenshots dropped and listed) into `cars\publish\` and writes `cars.json`
-   (name, URL, SHA256).
-2. On GitHub: Releases → *Draft a new release* → tag `cars` → drag
-   `cars\publish\*.zip` in → Publish. Commit `cars.json`.
-3. Private repo? Create a fine-grained token with read access to the repo's
-   *Contents* and save it as `github_token.txt` next to `Install.bat` (never
-   committed).
+**Sharing the cars** (optional): they are too big for git, so they go on a
+GitHub release. Run `cars\Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars`
+(cleans and writes `cars.json` with name, URL, SHA256), then on GitHub:
+Releases → *Draft a new release* → tag `cars` → drag the `.zip` files from
+`cars\` in → Publish → commit `cars.json`. Private repo? Save a fine-grained
+token with read access to *Contents* as `github_token.txt` next to
+`Install.bat` (never committed).
 
 `Install.bat` installs what's in `cars\` **and** what `cars.json` lists
 (downloaded and hash-checked; a local copy of the same name wins). Change that

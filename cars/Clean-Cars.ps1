@@ -1,20 +1,22 @@
 <#
-    Clean-Cars.ps1  -  run this ONLY when you want to put the cars on a GitHub
-    release so Install.bat can download them anywhere. Not needed for a normal
-    local install (Install.bat just takes whatever is in this folder).
+    Clean-Cars.ps1  -  cleans the car archives in this folder IN PLACE.
 
-    For every .zip/.rar/.7z in this folder it keeps only the data files
-    (.dff .txd .txt .cfg .dat .ini .nfo), drops auto-installer .exe/.bat files
-    and screenshots, writes a clean <name>.zip into .\publish\ and lists them
-    with their SHA256 in ..\cars.json pointing at the release URL.
+    For every .zip/.rar/.7z here it keeps only the data files
+    (.dff .txd .txt .cfg .dat .ini .nfo), drops auto-installer .exe/.bat files,
+    screenshots and anything else, and replaces the archive with a clean
+    <name>.zip (a .rar/.7z becomes a .zip; the original is deleted).
 
-    Usage:  Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars
-    Then:   upload publish\*.zip to that release, commit cars.json.
+    Usage:  Clean-Cars.bat
+            Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars
+              -> additionally writes ..\cars.json (name, URL, SHA256) so that
+                 Install.bat can download the same files from that release.
+
+    Not needed for a normal install: Install.bat only ever copies .dff/.txd
+    and text files out of an archive and ignores everything else anyway.
 #>
-param([Parameter(Mandatory = $true)][string]$ReleaseUrl)
+param([string]$ReleaseUrl)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$pub = Join-Path $here 'publish'
 $keep = '.dff', '.txd', '.txt', '.cfg', '.dat', '.ini', '.nfo'
 
 $sz = $null
@@ -29,7 +31,6 @@ function Expand-Any([string]$archive, [string]$dest) {
     if ($LASTEXITCODE -ne 0) { throw "7-Zip could not open it (exit $LASTEXITCODE)" }
 }
 
-New-Item -ItemType Directory -Path $pub -Force | Out-Null
 $items = @()
 foreach ($a in (Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Extension -in '.zip', '.rar', '.7z' } | Sort-Object Name)) {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("carclean_" + [guid]::NewGuid().ToString('N'))
@@ -42,18 +43,27 @@ foreach ($a in (Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Exten
         Write-Host "[!!] $($a.Name): no .dff/.txd inside - not a car mod, skipped" -ForegroundColor Yellow
         Remove-Item -LiteralPath $tmp -Recurse -Force; continue
     }
-    $dest = Join-Path $pub ($a.BaseName + '.zip')
-    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }
-    Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $dest -CompressionLevel Optimal
+    $dest = Join-Path $here ($a.BaseName + '.zip')
+    $stage = "$dest.clean"
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Force }
+    Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $stage -CompressionLevel Optimal
     Remove-Item -LiteralPath $tmp -Recurse -Force
+    $origLen = $a.Length
+    Remove-Item -LiteralPath $a.FullName -Force            # the original (.zip/.rar/.7z) is replaced by the clean .zip
+    Move-Item -LiteralPath $stage -Destination $dest -Force
     $d = Get-Item -LiteralPath $dest
-    $items += [ordered]@{ name = $d.Name; url = ($ReleaseUrl.TrimEnd('/') + '/' + [Uri]::EscapeDataString($d.Name)); sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash.ToUpperInvariant() }
-    Write-Host ("[ok] {0,-20} {1,7:N2} MB -> {2,7:N2} MB   kept {3}, dropped {4}" -f $a.Name, ($a.Length / 1MB), ($d.Length / 1MB), $kept.Count, $removed.Count) -ForegroundColor Green
+    $items += [ordered]@{ name = $d.Name; url = (("$ReleaseUrl").TrimEnd('/') + '/' + [Uri]::EscapeDataString($d.Name)); sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash.ToUpperInvariant() }
+    Write-Host ("[ok] {0,-20} {1,7:N2} MB -> {2,7:N2} MB  {3,-14} kept {4}, dropped {5}" -f $a.Name, ($origLen / 1MB), ($d.Length / 1MB), ("-> " + $d.Name), $kept.Count, $removed.Count) -ForegroundColor Green
     foreach ($r in ($removed | Where-Object { $_.Extension -in '.exe', '.bat', '.cmd', '.msi', '.scr', '.vbs', '.dll', '.com' })) { Write-Host "      dropped executable: $($r.Name)" -ForegroundColor DarkYellow }
 }
-if ($items.Count -eq 0) { throw "no usable car archives in $here" }
-$manifest = Join-Path (Split-Path -Parent $here) 'cars.json'
-ConvertTo-Json @($items) -Depth 3 | Set-Content -LiteralPath $manifest -Encoding UTF8
+if ($items.Count -eq 0) { Write-Host "no car archives found in $here"; exit }
 Write-Host ""
-Write-Host "[ok] wrote $manifest with $($items.Count) car(s)." -ForegroundColor Green
-Write-Host "Next: upload everything in  $pub  to the release at  $ReleaseUrl  and commit cars.json." -ForegroundColor Yellow
+Write-Host "[ok] $($items.Count) archive(s) in $here are now data-only .zip files." -ForegroundColor Green
+if ($ReleaseUrl) {
+    $manifest = Join-Path (Split-Path -Parent $here) 'cars.json'
+    ConvertTo-Json @($items) -Depth 3 | Set-Content -LiteralPath $manifest -Encoding UTF8
+    Write-Host "[ok] wrote $manifest" -ForegroundColor Green
+    Write-Host "Next: upload the .zip files from this folder to the release at  $ReleaseUrl  and commit cars.json." -ForegroundColor Yellow
+} else {
+    Write-Host "To also write cars.json for a GitHub release, run again with the release URL as argument." -ForegroundColor Yellow
+}

@@ -1,12 +1,13 @@
 @echo off
-rem Only for publishing: cleans the archives here into publish\ and writes ..\cars.json
-rem Usage: Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars
+rem Cleans the car archives in this folder in place (data files only, no exe).
+rem Optional argument: a GitHub release URL -> also writes ..\cars.json
+rem   Clean-Cars.bat
+rem   Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars
 cd /d "%~dp0"
 if "%~1"=="" (
-  echo Usage: Clean-Cars.bat https://github.com/USER/REPO/releases/download/TAG
-  pause
-  exit /b 1
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Clean-Cars.ps1"
+) else (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Clean-Cars.ps1" -ReleaseUrl "%~1"
 )
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Clean-Cars.ps1" -ReleaseUrl "%~1"
 echo.
 pause
