@@ -14,10 +14,11 @@ only replace what's in it. Fill the slots below and the whole city is modern.
    (`.rar`/`.7z` need 7-Zip; the installer installs it via winget if missing.)
 3. Run `Install.bat` – it installs whatever is in this folder. To share the
    cars through the repo without committing big files, run
-   `Publish-Cars.bat https://github.com/USER/REPO/releases/download/cars`,
-   upload the same archives to a GitHub release tagged `cars`, and commit
-   the generated `cars.json`; the installer then downloads them on the fly
-   (SHA256-checked). The installer writes the model over the old car in
+   `Publish-Cars.bat https://github.com/USER/REPO/releases/download/cars`:
+   it strips everything but the data files (no `.exe`, no screenshots),
+   writes clean `.zip`s to `cars\publish\` and the `cars.json` manifest.
+   Upload `cars\publish\*.zip` to a GitHub release tagged `cars` and commit
+   `cars.json`; the installer then downloads them on the fly (SHA256-checked). The installer writes the model over the old car in
    `gta3.img`, applies the handling / carcols lines the mod ships, and
    removes the old car's data.
 

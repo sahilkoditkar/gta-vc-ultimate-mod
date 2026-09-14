@@ -73,10 +73,13 @@ each one, checks the hash and installs it. Publishing new cars:
 
 1. Put the archives in `cars\`, **named after the slot they replace**
    (`infernus.rar`, `cheetah.zip`, ...).
-2. Run `Publish-Cars.bat https://github.com/USER/REPO/releases/download/cars`
-   → writes `cars.json`.
-3. On GitHub: Releases → *Draft a new release* → tag `cars` → drag the same
-   files in → Publish. Commit `cars.json`.
+2. Run `Publish-Cars.bat https://github.com/USER/REPO/releases/download/cars`.
+   It re-packs each archive with only the data files (the auto-installer
+   `.exe`s and screenshots that mod sites bundle are dropped and listed),
+   writes the clean `.zip`s to `cars\publish\` and lists them with their
+   SHA256 in `cars.json`.
+3. On GitHub: Releases → *Draft a new release* → tag `cars` → drag
+   `cars\publish\*.zip` in → Publish. Commit `cars.json`.
 4. Private repo? Downloads then need a token: create a fine-grained token with
    read access to the repo's *Contents* and save it as `github_token.txt`
    next to `Install.bat` (never committed).
