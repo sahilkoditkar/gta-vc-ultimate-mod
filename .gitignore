@@ -1,4 +1,11 @@
-# hash-verified upstream zips are cached here by the installer
+# hash-verified upstream zips (and cars from the release) are cached here
 downloads/
-__pycache__/
+# car archives are published as GitHub release assets, not committed (see cars.json)
+cars/*.zip
+cars/*.rar
+cars/*.7z
+cars/*/
+!cars/README.md
 gamepath.txt
+github_token.txt
+__pycache__/

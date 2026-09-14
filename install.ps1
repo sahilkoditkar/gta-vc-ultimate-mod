@@ -36,8 +36,18 @@
     The game does not start? Reports Windows' crash record for gta-vc.exe, then
     launches the game with each installed component switched off in turn and
     tells you which one is the problem (Diagnose.bat).
+.PARAMETER MakeCarsManifest
+    Hash every archive in cars\ and write cars.json pointing at -ReleaseUrl
+    (a GitHub release: https://github.com/USER/REPO/releases/download/TAG). Upload
+    the same files to that release; the installer then downloads them on the fly.
+.PARAMETER ReleaseUrl
+    Base URL used by -MakeCarsManifest.
 .PARAMETER Yes
     Do not pause for confirmation.
+
+    Linux (Bottles / Wine / Proton): run with PowerShell 7 -  ./install.sh  - the
+    game folder is the one inside drive_c. Afterwards add the Wine DLL override
+    dinput8 = native,builtin (printed at the end) so the ASI loader is used.
 #>
 [CmdletBinding()]
 param(
@@ -53,6 +63,8 @@ param(
     [switch]$Restore,
     [string]$BackupDir,
     [switch]$Diagnose,
+    [switch]$MakeCarsManifest,
+    [string]$ReleaseUrl,
     [switch]$Yes
 )
 
@@ -153,6 +165,76 @@ function Get-Package([hashtable]$pkg) {
         Write-Warn2 "$($pkg.Name): download failed - $($_.Exception.Message)"
         return $null
     }
+}
+
+function Get-GitHubToken {
+    # Needed only when the cars live in a PRIVATE repo's release. Read from
+    # github_token.txt next to the installer (gitignored) or $env:GITHUB_TOKEN.
+    $f = Join-Path $ScriptRoot 'github_token.txt'
+    if (Test-Path -LiteralPath $f) { $t = (Get-Content -LiteralPath $f -Raw).Trim(); if ($t) { return $t } }
+    if ($env:GITHUB_TOKEN) { return $env:GITHUB_TOKEN }
+    return $null
+}
+
+function Invoke-Download([string]$url, [string]$outFile) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $token = Get-GitHubToken
+    $m = [regex]::Match($url, '^https://github\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)$')
+    if ($token -and $m.Success) {
+        # private repo: resolve the asset through the API and download it with the token
+        $owner = $m.Groups[1].Value; $repo = $m.Groups[2].Value; $tag = $m.Groups[3].Value
+        $name = [Uri]::UnescapeDataString($m.Groups[4].Value)
+        $h = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'gta-vc-ultimate-mod' }
+        $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$owner/$repo/releases/tags/$tag" -Headers $h -UseBasicParsing
+        $asset = $rel.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+        if (-not $asset) { throw "asset '$name' not found in release '$tag' of $owner/$repo" }
+        $h.Accept = 'application/octet-stream'
+        Invoke-WebRequest -Uri $asset.url -Headers $h -OutFile $outFile -UseBasicParsing
+    } else {
+        Invoke-WebRequest -Uri $url -OutFile $outFile -UseBasicParsing
+    }
+}
+
+function Get-RemoteCars {
+    # cars.json: [ { "name": "infernus.rar", "url": "...", "sha256": "..." }, ... ]
+    # Downloads each (hash-checked) into downloads\cars\ and returns the local paths.
+    $mf = Join-Path $ScriptRoot 'cars.json'
+    $out = @()
+    if (-not (Test-Path -LiteralPath $mf)) { return $out }
+    $list = Get-Content -LiteralPath $mf -Raw | ConvertFrom-Json
+    $dir = Join-Path (Join-Path $ScriptRoot 'downloads') 'cars'
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    foreach ($e in @($list)) {
+        if (-not $e.name -or -not $e.url) { continue }
+        $local = Join-Path $dir $e.name
+        $sha = if ($e.sha256) { ([string]$e.sha256).ToUpperInvariant() } else { $null }
+        if (Test-Path -LiteralPath $local) {
+            if (-not $sha -or (Get-Sha256 $local) -eq $sha) { $out += $local; continue }
+            Remove-Item -LiteralPath $local -Force
+        }
+        if ($NoDownload) { Write-Warn2 "$($e.name): not downloaded (-NoDownload)"; continue }
+        Write-Info "downloading $($e.name)"
+        try {
+            Invoke-Download $e.url "$local.part"
+            if ($sha -and (Get-Sha256 "$local.part") -ne $sha) { Remove-Item -LiteralPath "$local.part" -Force; Write-Warn2 "$($e.name): SHA256 mismatch - skipped"; continue }
+            Move-Item -LiteralPath "$local.part" -Destination $local -Force
+            $out += $local
+        } catch { Write-Warn2 "$($e.name): download failed - $($_.Exception.Message)" }
+    }
+    return $out
+}
+
+function Write-CarsManifest {
+    if (-not $ReleaseUrl) { throw "-MakeCarsManifest needs -ReleaseUrl https://github.com/USER/REPO/releases/download/TAG" }
+    $carsRoot = Join-Path $ScriptRoot 'cars'
+    $items = @()
+    foreach ($f in (Get-ChildItem -LiteralPath $carsRoot -File | Where-Object { $_.Extension -in '.zip', '.rar', '.7z' } | Sort-Object Name)) {
+        $items += [ordered]@{ name = $f.Name; url = ($ReleaseUrl.TrimEnd('/') + '/' + [Uri]::EscapeDataString($f.Name)); sha256 = (Get-Sha256 $f.FullName) }
+        Write-Ok "$($f.Name)  $([Math]::Round($f.Length / 1MB, 1)) MB"
+    }
+    if ($items.Count -eq 0) { throw "no .zip/.rar/.7z in $carsRoot" }
+    ConvertTo-Json @($items) -Depth 3 | Set-Content -LiteralPath (Join-Path $ScriptRoot 'cars.json') -Encoding UTF8
+    Write-Ok "wrote cars.json with $($items.Count) car(s). Now upload exactly these files to the release at $ReleaseUrl and commit cars.json."
 }
 
 function Find-7Zip {
@@ -259,7 +341,16 @@ function Find-GamePath {
             }
         }
     } else {
-        if ($HOME) { $roots += @{ Path = $HOME; Depth = 4 } }
+        if ($HOME) {
+            foreach ($r in @(
+                @{ Path = (Join-Path $HOME '.var/app/com.usebottles.bottles/data/bottles/bottles'); Depth = 6 },   # Bottles (flatpak)
+                @{ Path = (Join-Path $HOME '.local/share/bottles/bottles'); Depth = 6 },                          # Bottles (native)
+                @{ Path = (Join-Path $HOME '.wine/drive_c'); Depth = 4 },                                         # plain Wine
+                @{ Path = (Join-Path $HOME '.local/share/Steam/steamapps'); Depth = 6 },                          # Proton / Steam
+                @{ Path = (Join-Path $HOME '.steam/steam/steamapps'); Depth = 6 },
+                @{ Path = (Join-Path $HOME 'Games'); Depth = 4 },
+                @{ Path = $HOME; Depth = 4 })) { $roots += $r }
+        }
     }
     foreach ($c in $candidates) {
         if ($c -and (Test-Path -LiteralPath (Join-Path $c $exeName))) { return $c }
@@ -738,6 +829,7 @@ function Invoke-Diagnose {
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
+if ($MakeCarsManifest) { Write-CarsManifest; exit 0 }
 if ($Diagnose) { Invoke-Diagnose; exit 0 }
 if ($Restore) { Invoke-Restore; exit 0 }
 
@@ -911,7 +1003,7 @@ else {
                 Install-File $f.FullName (Join-Path (Join-Path $Game 'neo') $f.Name)
             }
             # d3d8to9 wrapper (crosire), needed by SkyGfx for its d3d9 features; never overwrite an existing d3d8.dll
-            if (-not (Test-Path -LiteralPath (Join-Path $Game 'd3d8.dll'))) { Install-File (Join-Path $base 'd3d8.dll') (Join-Path $Game 'd3d8.dll') }
+            if ($IsWin -and -not (Test-Path -LiteralPath (Join-Path $Game 'd3d8.dll'))) { Install-File (Join-Path $base 'd3d8.dll') (Join-Path $Game 'd3d8.dll') }
             Write-Ok "installed skygfx.asi, skygfx.ini, rwd3d9.dll, neo\, d3d8.dll (d3d8to9)"
             [void]$Summary.Add("SkyGfx: installed")
         } else { Write-Warn2 "skygfx.asi not found in the archive"; [void]$Summary.Add("SkyGfx: FAILED") }
@@ -965,10 +1057,16 @@ else {
         $sources += Get-ChildItem -LiteralPath $carsRoot -Directory
         $sources += Get-ChildItem -LiteralPath $carsRoot -File | Where-Object { $_.Extension -in '.zip', '.rar', '.7z' }
     }
+    $localNames = @($sources | ForEach-Object { $_.Name })
+    foreach ($p in (Get-RemoteCars)) {
+        $fi = Get-Item -LiteralPath $p
+        if ($localNames -notcontains $fi.Name) { $sources += $fi }     # a local copy in cars\ wins over the release
+    }
     if (($sources | Where-Object { -not $_.PSIsContainer -and $_.Extension -in '.rar', '.7z' }) -and -not $script:SevenZip) {
         $script:SevenZip = Install-7Zip
         if ($script:SevenZip) { Write-Ok "7-Zip: $script:SevenZip" }
-        else { Write-Warn2 ".rar/.7z car archives present but 7-Zip is not installed - install it from https://www.7-zip.org (or 'winget install 7zip.7zip') and run again; those cars are skipped this time" }
+        elseif ($IsWin) { Write-Warn2 ".rar/.7z car archives present but 7-Zip is not installed - install it from https://www.7-zip.org (or 'winget install 7zip.7zip') and run again; those cars are skipped this time" }
+        else { Write-Warn2 ".rar/.7z car archives present but 7z is not installed - run: sudo apt install p7zip-full p7zip-rar   then run again; those cars are skipped this time" }
     }
     if ($sources.Count -eq 0) {
         Write-Info "no car folders or zips in $carsRoot - nothing to do (see cars\README.md)"
@@ -1062,4 +1160,12 @@ Write-Host ""
 Write-Host "Now start the game. 'CLEO 2.2.0' in the bottom-left corner of the main menu = success." -ForegroundColor Green
 Write-Host "Start a NEW game or load a save: money jumps to 99,999,999 and Tommy cannot be hurt."
 Write-Host "In game: Options > Display Setup > Frame Limiter ON (the engine mis-streams the world above ~60 fps)." -ForegroundColor Yellow
+if (-not $IsWin) {
+    Write-Host ""
+    Write-Host "Wine / Bottles / Proton: the game must load OUR dinput8.dll, not Wine's. Set the DLL override once:" -ForegroundColor Yellow
+    Write-Host "  Bottles : bottle > Settings > DLL overrides > add  dinput8  = Native then Builtin"
+    Write-Host "  Proton  : launch options  WINEDLLOVERRIDES=\"dinput8=n,b\" %command%"
+    Write-Host "  winecfg : Libraries tab > new override  dinput8  > Edit > Native then Builtin"
+    Write-Host "(the compatibility-flag mouse fix is Windows-only and was skipped; not needed under Wine)"
+}
 Write-Host "Controller / mouse: see README.md for the in-game settings."

@@ -67,14 +67,50 @@ skipped with a warning until the hash in `install.ps1` is refreshed.
 
 ## Cars
 
-`cars\` holds the replacements, one archive or folder per car, **named after
-the slot it replaces** (`infernus.rar`, `cheetah.zip`, `banshee\`, ...).
+Car archives are too big for git, so they live as **GitHub release assets** and
+`cars.json` in the repo lists them (name, URL, SHA256). The installer downloads
+each one, checks the hash and installs it. Publishing new cars:
+
+1. Put the archives in `cars\`, **named after the slot they replace**
+   (`infernus.rar`, `cheetah.zip`, ...).
+2. Run `Publish-Cars.bat https://github.com/USER/REPO/releases/download/cars`
+   → writes `cars.json`.
+3. On GitHub: Releases → *Draft a new release* → tag `cars` → drag the same
+   files in → Publish. Commit `cars.json`.
+4. Private repo? Downloads then need a token: create a fine-grained token with
+   read access to the repo's *Contents* and save it as `github_token.txt`
+   next to `Install.bat` (never committed).
+
+Anything still sitting in `cars\` locally is installed too and wins over the
+release copy. Layout rules:
 `.zip`, `.rar` and `.7z` all work; for `.rar`/`.7z` the installer uses 7-Zip
 and installs it through winget if it isn't there. The installer takes the
 `.dff`/`.txd` inside whatever they are called, writes them over the old car in
 `gta3.img`, applies any handling / carcols lines the mod ships, then compacts
 `gta3.img` so the old car is really gone. The full slot list, modern-car
 suggestions and download links are in **`cars\README.md`**.
+
+## Linux (Bottles / Wine / Proton)
+
+The installer runs natively with PowerShell 7 (`sudo snap install powershell
+--classic`, plus `sudo apt install p7zip-full p7zip-rar` for `.rar` cars):
+
+```
+./install.sh                      # finds the game inside Bottles / .wine / Steam prefixes
+./install.sh -GamePath "$HOME/.var/app/com.usebottles.bottles/data/bottles/bottles/VC/drive_c/Games/Grand Theft Auto Vice City"
+```
+
+Then one setting in the prefix, or CLEO never loads: the game must use the
+ASI loader `dinput8.dll` from its folder instead of Wine's own.
+
+* Bottles: the bottle → Settings → *DLL overrides* → add `dinput8` → *Native then Builtin*.
+* Proton (game added to Steam): launch options `WINEDLLOVERRIDES="dinput8=n,b" %command%`.
+* Plain Wine: `winecfg` → Libraries → add `dinput8` → Edit → *Native then Builtin*.
+
+The Windows-only parts (compatibility flags, winget) are skipped; SkyGfx's
+`d3d8to9` wrapper is not installed under Wine because Wine's own d3d8 is
+already the better path. Everything else, including the Large Address Aware
+flag, works the same.
 
 ## Mouse doesn't work on Windows 11
 
