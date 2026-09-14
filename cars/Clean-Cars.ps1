@@ -53,7 +53,7 @@ foreach ($a in (Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Exten
     $origLen = $a.Length
     $d = Get-Item -LiteralPath $dest
     $items += [ordered]@{ name = $d.Name; url = (("$ReleaseUrl").TrimEnd('/') + '/' + [Uri]::EscapeDataString($d.Name)); sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash.ToUpperInvariant() }
-    Write-Host ("[ok] {0,-20} {1,7:N2} MB -> {2,7:N2} MB  {3,-14} kept {4}, dropped {5}" -f $a.Name, ($origLen / 1MB), ($d.Length / 1MB), ("-> clean\\" + $d.Name), $kept.Count, $removed.Count) -ForegroundColor Green
+    Write-Host ("[ok] {0,-20} {1,7:N2} MB -> {2,7:N2} MB  {3,-14} kept {4}, dropped {5}" -f $a.Name, ($origLen / 1MB), ($d.Length / 1MB), ("-> clean\" + $d.Name), $kept.Count, $removed.Count) -ForegroundColor Green
     foreach ($r in ($removed | Where-Object { $_.Extension -in '.exe', '.bat', '.cmd', '.msi', '.scr', '.vbs', '.dll', '.com' })) { Write-Host "      dropped executable: $($r.Name)" -ForegroundColor DarkYellow }
 }
 if ($items.Count -eq 0) { Write-Host "no car archives found in $here"; exit }
