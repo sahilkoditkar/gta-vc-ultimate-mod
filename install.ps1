@@ -36,14 +36,10 @@
     The game does not start? Reports Windows' crash record for gta-vc.exe, then
     launches the game with each installed component switched off in turn and
     tells you which one is the problem (Diagnose.bat).
-.PARAMETER MakeCarsManifest
-    Clean every archive in cars\ (only .dff/.txd/text files survive, no executables
-    or screenshots), write the cleaned .zip copies to cars\publish\ and list them
-    with SHA256 in cars.json pointing at -ReleaseUrl (a GitHub release:
-    https://github.com/USER/REPO/releases/download/TAG). Upload cars\publish\* to
-    that release; the installer then downloads them on the fly.
-.PARAMETER ReleaseUrl
-    Base URL used by -MakeCarsManifest.
+.PARAMETER Cars
+    Where car mods come from: both (default) = archives/folders in cars\ plus the
+    ones listed in cars.json (downloaded from the GitHub release, hash-checked);
+    local = only cars\; release = only cars.json; none = leave cars alone.
 .PARAMETER Yes
     Do not pause for confirmation.
 
@@ -65,8 +61,8 @@ param(
     [switch]$Restore,
     [string]$BackupDir,
     [switch]$Diagnose,
-    [switch]$MakeCarsManifest,
-    [string]$ReleaseUrl,
+    [ValidateSet('both', 'local', 'release', 'none')]
+    [string]$Cars = 'both',
     [switch]$Yes
 )
 
@@ -224,44 +220,6 @@ function Get-RemoteCars {
         } catch { Write-Warn2 "$($e.name): download failed - $($_.Exception.Message)" }
     }
     return $out
-}
-
-function Write-CarsManifest {
-    # Cleans every archive in cars\ (keeps only data files), writes the cleaned
-    # copies as .zip into cars\publish\ and lists them in cars.json for the
-    # installer to download from a GitHub release.
-    if (-not $ReleaseUrl) { throw "-MakeCarsManifest needs -ReleaseUrl https://github.com/USER/REPO/releases/download/TAG" }
-    $carsRoot = Join-Path $ScriptRoot 'cars'
-    $pubDir = Join-Path $carsRoot 'publish'
-    if (-not (Test-Path -LiteralPath $pubDir)) { New-Item -ItemType Directory -Path $pubDir -Force | Out-Null }
-    $script:SevenZip = Find-7Zip
-    $keep = '.dff', '.txd', '.txt', '.cfg', '.dat', '.ini', '.nfo'
-    $items = @()
-    foreach ($f in (Get-ChildItem -LiteralPath $carsRoot -File | Where-Object { $_.Extension -in '.zip', '.rar', '.7z' } | Sort-Object Name)) {
-        $tmp = $null
-        try { $tmp = Expand-ToTemp $f.FullName } catch { Write-Warn2 "$($f.Name): $($_.Exception.Message) - skipped"; continue }
-        $all = Get-ChildItem -LiteralPath $tmp -Recurse -File
-        $removed = @($all | Where-Object { $_.Extension.ToLowerInvariant() -notin $keep })
-        $removed | Remove-Item -Force
-        $kept = @(Get-ChildItem -LiteralPath $tmp -Recurse -File)
-        if (-not ($kept | Where-Object { $_.Extension -in '.dff', '.txd' })) {
-            Write-Warn2 "$($f.Name): no .dff/.txd inside - not a car mod, skipped"
-            Remove-Item -LiteralPath $tmp -Recurse -Force; continue
-        }
-        $dest = Join-Path $pubDir ($f.BaseName + '.zip')
-        if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }
-        Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $dest -CompressionLevel Optimal
-        Remove-Item -LiteralPath $tmp -Recurse -Force
-        $d = Get-Item -LiteralPath $dest
-        $items += [ordered]@{ name = $d.Name; url = ($ReleaseUrl.TrimEnd('/') + '/' + [Uri]::EscapeDataString($d.Name)); sha256 = (Get-Sha256 $d.FullName) }
-        Write-Ok ("{0,-20} {1,7:N2} MB -> {2,7:N2} MB   kept {3}, dropped {4}" -f $f.Name, ($f.Length / 1MB), ($d.Length / 1MB), $kept.Count, $removed.Count)
-        foreach ($r in ($removed | Where-Object { $_.Extension -in '.exe', '.bat', '.cmd', '.msi', '.scr', '.vbs', '.dll', '.com' })) { Write-Info "      dropped executable: $($r.Name)" }
-    }
-    if ($items.Count -eq 0) { throw "no usable .zip/.rar/.7z in $carsRoot" }
-    ConvertTo-Json @($items) -Depth 3 | Set-Content -LiteralPath (Join-Path $ScriptRoot 'cars.json') -Encoding UTF8
-    Write-Ok "wrote cars.json with $($items.Count) car(s)."
-    Write-Host ""
-    Write-Host "Next: upload every file from  $pubDir  to the release at  $ReleaseUrl  and commit cars.json." -ForegroundColor Yellow
 }
 
 function Find-7Zip {
@@ -856,7 +814,6 @@ function Invoke-Diagnose {
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
-if ($MakeCarsManifest) { Write-CarsManifest; exit 0 }
 if ($Diagnose) { Invoke-Diagnose; exit 0 }
 if ($Restore) { Invoke-Restore; exit 0 }
 
@@ -1072,7 +1029,7 @@ else {
 
 # ---- 8. cars ---------------------------------------------------------------
 Write-Step "8/8  Car mods from .\cars\"
-if ($SkipCars) { Write-Info "skipped (-SkipCars)"; [void]$Summary.Add("Cars: skipped") }
+if ($SkipCars -or $Cars -eq 'none') { Write-Info "skipped (-Cars none)"; [void]$Summary.Add("Cars: skipped") }
 else {
     $carsRoot = Join-Path $ScriptRoot 'cars'
     $img = Join-Path $Game 'models\gta3.img'
@@ -1080,14 +1037,16 @@ else {
     $handling = Join-Path $Game 'data\handling.cfg'
     $carcols  = Join-Path $Game 'data\carcols.dat'
     $sources = @()
-    if (Test-Path -LiteralPath $carsRoot) {
-        $sources += Get-ChildItem -LiteralPath $carsRoot -Directory
+    if ($Cars -in 'both', 'local' -and (Test-Path -LiteralPath $carsRoot)) {
+        $sources += Get-ChildItem -LiteralPath $carsRoot -Directory | Where-Object { $_.Name -ne 'publish' }
         $sources += Get-ChildItem -LiteralPath $carsRoot -File | Where-Object { $_.Extension -in '.zip', '.rar', '.7z' }
     }
-    $localNames = @($sources | ForEach-Object { $_.Name })
-    foreach ($p in (Get-RemoteCars)) {
-        $fi = Get-Item -LiteralPath $p
-        if ($localNames -notcontains $fi.Name) { $sources += $fi }     # a local copy in cars\ wins over the release
+    if ($Cars -in 'both', 'release') {
+        $localNames = @($sources | ForEach-Object { $_.Name })
+        foreach ($p in (Get-RemoteCars)) {
+            $fi = Get-Item -LiteralPath $p
+            if ($localNames -notcontains $fi.Name) { $sources += $fi }     # a local copy in cars\ wins over the release
+        }
     }
     if (($sources | Where-Object { -not $_.PSIsContainer -and $_.Extension -in '.rar', '.7z' }) -and -not $script:SevenZip) {
         $script:SevenZip = Install-7Zip

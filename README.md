@@ -67,31 +67,33 @@ skipped with a warning until the hash in `install.ps1` is refreshed.
 
 ## Cars
 
-Car archives are too big for git, so they live as **GitHub release assets** and
-`cars.json` in the repo lists them (name, URL, SHA256). The installer downloads
-each one, checks the hash and installs it. Publishing new cars:
-
-1. Put the archives in `cars\`, **named after the slot they replace**
-   (`infernus.rar`, `cheetah.zip`, ...).
-2. Run `Publish-Cars.bat https://github.com/USER/REPO/releases/download/cars`.
-   It re-packs each archive with only the data files (the auto-installer
-   `.exe`s and screenshots that mod sites bundle are dropped and listed),
-   writes the clean `.zip`s to `cars\publish\` and lists them with their
-   SHA256 in `cars.json`.
-3. On GitHub: Releases → *Draft a new release* → tag `cars` → drag
-   `cars\publish\*.zip` in → Publish. Commit `cars.json`.
-4. Private repo? Downloads then need a token: create a fine-grained token with
-   read access to the repo's *Contents* and save it as `github_token.txt`
-   next to `Install.bat` (never committed).
-
-Anything still sitting in `cars\` locally is installed too and wins over the
-release copy. Layout rules:
+`cars\` holds the replacements, one archive or folder per car, **named after
+the slot it replaces** (`infernus.rar`, `cheetah.zip`, `banshee\`, ...).
 `.zip`, `.rar` and `.7z` all work; for `.rar`/`.7z` the installer uses 7-Zip
 and installs it through winget if it isn't there. The installer takes the
 `.dff`/`.txd` inside whatever they are called, writes them over the old car in
 `gta3.img`, applies any handling / carcols lines the mod ships, then compacts
-`gta3.img` so the old car is really gone. The full slot list, modern-car
-suggestions and download links are in **`cars\README.md`**.
+`gta3.img` so the old car is really gone. Executables inside a mod are ignored.
+The full slot list, modern-car suggestions and download links are in
+**`cars\README.md`**.
+
+Car archives are too big for git, so to install them on another machine they
+go on a **GitHub release** instead (optional, only when you want that):
+
+1. With the archives in `cars\`, run
+   `cars\Clean-Cars.bat https://github.com/USER/REPO/releases/download/cars`.
+   It re-packs each one with only the data files (installer `.exe`s and
+   screenshots dropped and listed) into `cars\publish\` and writes `cars.json`
+   (name, URL, SHA256).
+2. On GitHub: Releases → *Draft a new release* → tag `cars` → drag
+   `cars\publish\*.zip` in → Publish. Commit `cars.json`.
+3. Private repo? Create a fine-grained token with read access to the repo's
+   *Contents* and save it as `github_token.txt` next to `Install.bat` (never
+   committed).
+
+`Install.bat` installs what's in `cars\` **and** what `cars.json` lists
+(downloaded and hash-checked; a local copy of the same name wins). Change that
+with `-Cars local`, `-Cars release` or `-Cars none` on the line in `Install.bat`.
 
 ## Linux (Bottles / Wine / Proton)
 
