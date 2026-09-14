@@ -44,7 +44,7 @@ foreach ($a in (Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Exten
         Remove-Item -LiteralPath $tmp -Recurse -Force; continue
     }
     $dest = Join-Path $here ($a.BaseName + '.zip')
-    $stage = "$dest.clean"
+    $stage = Join-Path $here ($a.BaseName + '.clean.zip')   # Compress-Archive only accepts a .zip name
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Force }
     Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $stage -CompressionLevel Optimal
     Remove-Item -LiteralPath $tmp -Recurse -Force
